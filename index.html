@@ -4,7 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0f141b">
+  <meta name="application-name" content="Timebox">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Timebox">
   <title>Timebox</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -18,6 +26,7 @@
       <span id="screen-label">今日の予定</span>
       <strong id="header-date"></strong>
     </div>
+    <span id="network-status" class="network-status" role="status">接続確認中</span>
     <button id="timer-return-button" class="header-action" type="button" hidden>タイマーへ</button>
   </header>
 
@@ -32,10 +41,18 @@
     <button id="menu-timer-button" type="button" data-navigation="timer" disabled>実行中タイマーへ戻る</button>
     <hr>
     <button type="button" disabled>検索 <span>今後追加予定</span></button>
-    <button type="button" disabled>設定 <span>今後追加予定</span></button>
+    <button type="button" data-navigation="settings">設定・アプリ情報</button>
   </nav>
 
   <main id="app" class="app-shell" hidden>
+    <aside id="update-banner" class="update-banner" aria-live="polite" hidden>
+      <div>
+        <strong>新しいバージョンがあります</strong>
+        <p id="update-banner-message">準備ができたら更新してください。</p>
+      </div>
+      <button id="update-banner-button" class="primary" type="button">更新する</button>
+    </aside>
+
     <section id="schedule-view" class="view" aria-labelledby="schedule-title">
       <div class="view-heading">
         <div>
@@ -127,6 +144,55 @@
         <h2 id="history-entry-title">記録</h2>
         <div id="history-list" class="card-list"></div>
       </section>
+    </section>
+
+    <section id="settings-view" class="view" aria-labelledby="settings-title" hidden>
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">第2段階A</p>
+          <h1 id="settings-title">設定・アプリ情報</h1>
+        </div>
+      </div>
+
+      <div class="settings-grid">
+        <section class="panel" aria-labelledby="app-status-title">
+          <h2 id="app-status-title">アプリ状態</h2>
+          <dl class="status-list">
+            <div><dt>アプリバージョン</dt><dd id="app-version">確認中</dd></div>
+            <div><dt>接続表示</dt><dd id="settings-network-status">確認中</dd></div>
+            <div><dt>Service Worker</dt><dd id="service-worker-status">確認中</dd></div>
+            <div><dt>オフライン準備</dt><dd id="offline-ready-status">確認中</dd></div>
+          </dl>
+          <p id="network-status-note" class="muted">オンライン表示は実際の通信成功を保証するものではありません。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="update-settings-title">
+          <h2 id="update-settings-title">アプリ更新</h2>
+          <p id="update-status-message" class="status-message" role="status">更新機能を準備しています。</p>
+          <div class="settings-actions">
+            <button id="check-update-button" type="button">更新を確認</button>
+            <button id="apply-update-button" class="primary" type="button" hidden>更新する</button>
+          </div>
+          <p class="muted">新しい版は自動適用しません。実行中・一時停止中・終了待ちのタイマーがある場合、更新はタイマー終了後まで保留します。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="install-guide-title">
+          <h2 id="install-guide-title">iPadのホーム画面へ追加</h2>
+          <ol class="instruction-list">
+            <li>Safariの共有ボタンを開きます。</li>
+            <li>「ホーム画面に追加」を選びます。</li>
+            <li>追加後、ホーム画面のTimeboxアイコンから起動します。</li>
+          </ol>
+          <p class="notice compact">初回はオンラインで一度すべて読み込んでください。オフライン準備完了後から、通信がなくても起動できます。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="data-info-title">
+          <h2 id="data-info-title">保存データについて</h2>
+          <p>予定・履歴・現在のタイマーは、この端末・ブラウザ内のIndexedDBに保存されます。アプリ更新では削除しません。</p>
+          <p class="notice compact">Safariの履歴やWebサイトデータを削除すると、保存内容が消える可能性があります。</p>
+          <p class="muted">JSONバックアップは今後追加予定です。通知、終了音、画面点灯維持もこの段階では未実装です。</p>
+        </section>
+      </div>
     </section>
   </main>
 
@@ -241,6 +307,7 @@
     </form>
   </dialog>
 
+  <script src="./app-version.js"></script>
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>

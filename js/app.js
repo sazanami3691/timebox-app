@@ -32,6 +32,7 @@ import {
   savePlanAndTimer,
   startCurrentTimer
 } from "./db.js";
+import { createPwaManager } from "./pwa.js";
 
 const $ = (selector) => document.querySelector(selector);
 const today = () => localDateString(new Date());
@@ -51,6 +52,8 @@ const state = {
   timerSyncing: false
 };
 
+const pwaManager = createPwaManager({ getTimerStatus: () => state.timer?.status ?? "idle" });
+
 const loading = $("#loading");
 const app = $("#app");
 const screenLabel = $("#screen-label");
@@ -60,6 +63,7 @@ const menuTimerButton = $("#menu-timer-button");
 const scheduleView = $("#schedule-view");
 const timerView = $("#timer-view");
 const historyView = $("#history-view");
+const settingsView = $("#settings-view");
 const planDialog = $("#plan-dialog");
 const planForm = $("#plan-form");
 const lateStartDialog = $("#late-start-dialog");
@@ -180,10 +184,49 @@ function updateHeader() {
   } else if (state.view === "history") {
     screenLabel.textContent = "日別履歴";
     headerDate.textContent = formatDateLabel(state.historyDate);
+  } else if (state.view === "settings") {
+    screenLabel.textContent = "設定・アプリ情報";
+    headerDate.textContent = `バージョン ${globalThis.TIMEBOX_APP_VERSION ?? "不明"}`;
   } else {
     screenLabel.textContent = state.selectedDate === today() ? "今日の予定" : "日付別予定";
     headerDate.textContent = formatDateLabel(state.selectedDate);
   }
+}
+
+function renderPwaState(pwaState) {
+  const networkStatus = $("#network-status");
+  networkStatus.textContent = pwaState.online ? "● オンライン" : "○ オフライン";
+  networkStatus.className = `network-status ${pwaState.online ? "online" : "offline"}`;
+  $("#app-version").textContent = pwaState.appVersion;
+  $("#settings-network-status").textContent = pwaState.online
+    ? "オンライン表示（通信確認前）"
+    : "オフライン";
+  $("#service-worker-status").textContent = !pwaState.supported
+    ? "このブラウザでは利用不可"
+    : pwaState.registered ? "登録済み" : "登録準備中";
+  $("#offline-ready-status").textContent = pwaState.offlineReady
+    ? "準備完了（初回キャッシュ済み）"
+    : "未完了（オンライン読み込みが必要）";
+  $("#update-status-message").textContent = pwaState.message;
+
+  const checkButton = $("#check-update-button");
+  checkButton.disabled = !pwaState.supported || !pwaState.online || pwaState.checking;
+  checkButton.textContent = pwaState.checking ? "確認中…" : "更新を確認";
+
+  const applyButton = $("#apply-update-button");
+  applyButton.hidden = !pwaState.updateAvailable;
+  applyButton.disabled = pwaState.updateBlocked;
+  applyButton.textContent = pwaState.updateBlocked ? "タイマー終了後に更新" : "更新する";
+
+  const banner = $("#update-banner");
+  banner.hidden = !pwaState.updateAvailable;
+  banner.classList.toggle("blocked", pwaState.updateBlocked);
+  $("#update-banner-message").textContent = pwaState.updateBlocked
+    ? "タイマー終了後に更新できます。現在の計測と保存データは維持されます。"
+    : "更新は自動適用されません。準備ができたら更新してください。";
+  const bannerButton = $("#update-banner-button");
+  bannerButton.disabled = pwaState.updateBlocked;
+  bannerButton.textContent = pwaState.updateBlocked ? "タイマー終了後に更新" : "更新する";
 }
 
 async function showView(view) {
@@ -196,6 +239,7 @@ async function showView(view) {
   scheduleView.hidden = view !== "schedule";
   timerView.hidden = view !== "timer";
   historyView.hidden = view !== "history";
+  settingsView.hidden = view !== "settings";
   if (view === "schedule") await loadSchedule(state.selectedDate);
   if (view === "history") await loadHistory(state.historyDate);
   if (view === "timer") renderTimer();
@@ -443,6 +487,7 @@ async function startPlan(plan, targetMs) {
     const timer = createTimer(plan, Date.now(), targetMs);
     await startCurrentTimer(timer);
     state.timer = timer;
+    pwaManager.notifyTimerStateChanged();
     closeDialog(lateStartDialog);
     await showView("timer");
   } catch (error) {
@@ -499,6 +544,7 @@ async function finalizeTimer(outcome, options = {}) {
     const history = createHistoryEntry(plan, outcome, actualMs, timer);
     await commitOutcome(updatedPlan, history);
     state.timer = null;
+    pwaManager.notifyTimerStateChanged();
     closeDialog(expiredCompleteDialog);
     state.selectedDate = timer.planDate;
     await loadSchedule(timer.planDate);
@@ -516,6 +562,7 @@ async function syncTimer({ persist = true } = {}) {
     const synced = reduceTimer(state.timer, { type: "sync" }, Date.now());
     const changed = synced.status !== state.timer.status;
     state.timer = synced;
+    if (changed) pwaManager.notifyTimerStateChanged();
     if (persist && changed && synced.status === "expired") await saveCurrentTimer(synced);
     if (state.view === "timer") renderTimer();
     updateHeader();
@@ -532,6 +579,7 @@ async function timerAction(type) {
     const next = reduceTimer(state.timer, { type }, Date.now());
     await saveCurrentTimer(next);
     state.timer = next;
+    pwaManager.notifyTimerStateChanged();
     renderTimer();
   } catch (error) {
     showError(error, "タイマー操作を保存できませんでした。");
@@ -731,11 +779,15 @@ function bindEvents() {
   $("#history-next-button").addEventListener("click", () => loadHistory(shiftLocalDate(state.historyDate, 1)));
   $("#history-today-button").addEventListener("click", () => loadHistory(today()));
   $("#history-date").addEventListener("change", (event) => event.target.value && loadHistory(event.target.value).catch(showError));
+  $("#check-update-button").addEventListener("click", () => pwaManager.checkForUpdate());
+  $("#apply-update-button").addEventListener("click", () => pwaManager.applyUpdate());
+  $("#update-banner-button").addEventListener("click", () => pwaManager.applyUpdate());
   for (const eventName of ["pageshow", "focus"]) window.addEventListener(eventName, () => syncTimer());
   document.addEventListener("visibilitychange", () => { if (!document.hidden) syncTimer(); });
 }
 
 async function initialize() {
+  pwaManager.subscribe(renderPwaState);
   bindEvents();
   try {
     await initializeDatabase();
@@ -744,10 +796,12 @@ async function initialize() {
       state.timer = reduceTimer(state.timer, { type: "sync" }, Date.now());
       await saveCurrentTimer(state.timer);
     }
+    pwaManager.notifyTimerStateChanged();
     await loadSchedule(state.selectedDate);
     loading.hidden = true;
     app.hidden = false;
     await showView(state.timer ? "timer" : "schedule");
+    void pwaManager.start();
   } catch (error) {
     console.error(error);
     loading.innerHTML = "";
