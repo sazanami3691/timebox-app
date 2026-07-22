@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0f141b">
+  <meta name="application-name" content="Timebox">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Timebox">
+  <title>Timebox</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="loading" class="loading" role="status" aria-live="polite">
+    <div class="loading-box">保存データを読み込んでいます…</div>
+  </div>
+
+  <header class="app-header">
+    <button id="menu-button" class="icon-button" type="button" aria-label="メニューを開く" aria-expanded="false" aria-controls="side-menu">☰</button>
+    <div class="header-title">
+      <span id="screen-label">今日の予定</span>
+      <strong id="header-date"></strong>
+    </div>
+    <span id="network-status" class="network-status" role="status">接続確認中</span>
+    <button id="timer-return-button" class="header-action" type="button" hidden>タイマーへ</button>
+  </header>
+
+  <div id="menu-backdrop" class="menu-backdrop" hidden></div>
+  <nav id="side-menu" class="side-menu" aria-label="メインメニュー" aria-hidden="true">
+    <div class="menu-heading">
+      <strong>Timebox</strong>
+      <button id="menu-close-button" class="icon-button" type="button" aria-label="メニューを閉じる">×</button>
+    </div>
+    <button type="button" data-navigation="today">今日</button>
+    <button type="button" data-navigation="history">履歴</button>
+    <button id="menu-timer-button" type="button" data-navigation="timer" disabled>実行中タイマーへ戻る</button>
+    <hr>
+    <button type="button" disabled>検索 <span>今後追加予定</span></button>
+    <button type="button" data-navigation="settings">設定・アプリ情報</button>
+  </nav>
+
+  <main id="app" class="app-shell" hidden>
+    <aside id="update-banner" class="update-banner" aria-live="polite" hidden>
+      <div>
+        <strong>新しいバージョンがあります</strong>
+        <p id="update-banner-message">準備ができたら更新してください。</p>
+      </div>
+      <button id="update-banner-button" class="primary" type="button">更新する</button>
+    </aside>
+
+    <section id="schedule-view" class="view" aria-labelledby="schedule-title">
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">日付別予定</p>
+          <h1 id="schedule-title">今日のタイムボックス</h1>
+        </div>
+        <button id="add-plan-button" class="primary" type="button">予定を追加</button>
+      </div>
+
+      <div class="date-navigation panel">
+        <button id="previous-day-button" type="button" aria-label="前の日">‹ 前日</button>
+        <label for="selected-date">表示日</label>
+        <input id="selected-date" type="date">
+        <button id="today-button" type="button">今日</button>
+        <button id="next-day-button" type="button" aria-label="次の日">翌日 ›</button>
+      </div>
+
+      <div id="readonly-notice" class="notice" hidden>過去日は閲覧専用です。予定の登録・編集・開始・手動完了はできません。</div>
+
+      <div class="schedule-tools">
+        <button id="copy-previous-button" type="button">前日の予定をコピー</button>
+        <span id="schedule-summary" class="muted"></span>
+      </div>
+
+      <section class="panel" aria-labelledby="clock-list-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">時刻指定</p>
+            <h2 id="clock-list-title">簡易時刻表</h2>
+          </div>
+        </div>
+        <div id="clock-plan-list" class="card-list"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="duration-list-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">時間指定</p>
+            <h2 id="duration-list-title">時刻未指定タスク</h2>
+          </div>
+        </div>
+        <div id="duration-plan-list" class="card-list"></div>
+      </section>
+
+      <details id="finished-section" class="panel finished-panel">
+        <summary><span>完了・スキップ済み</span><span id="finished-count" class="count-badge">0</span></summary>
+        <div id="finished-plan-list" class="card-list finished-list"></div>
+      </details>
+    </section>
+
+    <section id="timer-view" class="view" aria-labelledby="timer-title" hidden>
+      <div id="timer-panel" class="timer-panel panel">
+        <p id="timer-status" class="timer-status">実行中</p>
+        <h1 id="timer-title">タイマー</h1>
+        <div id="timer-clock" class="timer-clock" aria-live="off">00:00</div>
+        <p id="timer-overtime" class="timer-overtime" hidden></p>
+        <div class="timer-meta">
+          <span id="timer-kind" class="type-badge"></span>
+          <span id="timer-planned"></span>
+          <span id="timer-date"></span>
+        </div>
+        <p id="timer-note" class="timer-note"></p>
+        <div class="timer-actions">
+          <button id="pause-resume-button" class="primary" type="button">一時停止</button>
+          <button id="complete-timer-button" type="button">完了</button>
+          <button id="extend-timer-button" type="button">5分延長</button>
+          <button id="skip-timer-button" class="danger" type="button">スキップ</button>
+        </div>
+        <button id="back-to-schedule-button" class="text-button" type="button">予定画面を見る</button>
+      </div>
+    </section>
+
+    <section id="history-view" class="view" aria-labelledby="history-title" hidden>
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">閲覧専用</p>
+          <h1 id="history-title">日別履歴</h1>
+        </div>
+      </div>
+      <div class="date-navigation panel">
+        <button id="history-previous-button" type="button">‹ 前日</button>
+        <label for="history-date">表示日</label>
+        <input id="history-date" type="date">
+        <button id="history-today-button" type="button">今日</button>
+        <button id="history-next-button" type="button">翌日 ›</button>
+      </div>
+      <div id="history-metrics" class="metrics-grid"></div>
+      <section class="panel" aria-labelledby="history-entry-title">
+        <h2 id="history-entry-title">記録</h2>
+        <div id="history-list" class="card-list"></div>
+      </section>
+    </section>
+
+    <section id="settings-view" class="view" aria-labelledby="settings-title" hidden>
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">第2段階A・B</p>
+          <h1 id="settings-title">設定・アプリ情報</h1>
+        </div>
+      </div>
+
+      <div class="settings-grid">
+        <section class="panel" aria-labelledby="app-status-title">
+          <h2 id="app-status-title">アプリ状態</h2>
+          <dl class="status-list">
+            <div><dt>アプリバージョン</dt><dd id="app-version">確認中</dd></div>
+            <div><dt>接続表示</dt><dd id="settings-network-status">確認中</dd></div>
+            <div><dt>Service Worker</dt><dd id="service-worker-status">確認中</dd></div>
+            <div><dt>オフライン準備</dt><dd id="offline-ready-status">確認中</dd></div>
+          </dl>
+          <p id="network-status-note" class="muted">オンライン表示は実際の通信成功を保証するものではありません。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="update-settings-title">
+          <h2 id="update-settings-title">アプリ更新</h2>
+          <p id="update-status-message" class="status-message" role="status">更新機能を準備しています。</p>
+          <div class="settings-actions">
+            <button id="check-update-button" type="button">更新を確認</button>
+            <button id="apply-update-button" class="primary" type="button" hidden>更新する</button>
+          </div>
+          <p class="muted">新しい版は自動適用しません。実行中・一時停止中・終了待ちのタイマーがある場合、更新はタイマー終了後まで保留します。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="sound-settings-title">
+          <h2 id="sound-settings-title">タイマー終了音</h2>
+          <label class="setting-toggle" for="sound-enabled">
+            <input id="sound-enabled" type="checkbox">
+            <span>終了音を3回再生する</span>
+          </label>
+          <div class="field">
+            <label for="sound-volume">音量 <output id="sound-volume-output" for="sound-volume">25%</output></label>
+            <input id="sound-volume" type="range" min="0" max="100" step="1" value="25">
+          </div>
+          <button id="test-sound-button" type="button">音をテスト</button>
+          <p id="sound-status-message" class="status-message" role="status">音声機能を確認しています。</p>
+          <p class="muted">最初に「音をテスト」を押すと、ブラウザが音声を利用できる状態になります。端末の消音設定や音量にも影響されます。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="notification-settings-title">
+          <h2 id="notification-settings-title">通知と予定時刻通知</h2>
+          <dl class="status-list">
+            <div><dt>通知機能</dt><dd id="notification-support-status">確認中</dd></div>
+            <div><dt>通知権限</dt><dd id="notification-permission-status">確認中</dd></div>
+          </dl>
+          <div class="settings-actions">
+            <button id="enable-notification-button" type="button">通知を有効にする</button>
+            <button id="test-notification-button" type="button">通知をテスト</button>
+          </div>
+          <div class="field">
+            <label for="schedule-notification">時刻指定予定の通知タイミング</label>
+            <select id="schedule-notification">
+              <option value="none">通知なし</option>
+              <option value="start">開始時刻のみ</option>
+              <option value="5">5分前＋開始時刻</option>
+              <option value="10">10分前＋開始時刻</option>
+              <option value="15">15分前＋開始時刻</option>
+            </select>
+          </div>
+          <p id="notification-status-message" class="status-message" role="status">通知機能を確認しています。</p>
+          <p class="notice compact">iPadではホーム画面版Webアプリを主な確認対象とします。Safari通常タブ、Chrome通常タブ、Chromeから追加したホーム画面版では利用可否が異なる場合があります。アプリを完全に閉じている間の通知は保証されません。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="wake-lock-settings-title">
+          <h2 id="wake-lock-settings-title">画面点灯維持</h2>
+          <label class="setting-toggle" for="wake-lock-enabled">
+            <input id="wake-lock-enabled" type="checkbox">
+            <span>タイマー中は画面を点灯したままにする</span>
+          </label>
+          <dl class="status-list">
+            <div><dt>対応状況</dt><dd id="wake-lock-support-status">確認中</dd></div>
+            <div><dt>現在状態</dt><dd id="wake-lock-active-status">確認中</dd></div>
+          </dl>
+          <p id="wake-lock-status-message" class="status-message" role="status">画面点灯維持機能を確認しています。</p>
+          <p class="muted">running中だけ取得し、一時停止・終了待ち・完了・スキップでは解除します。取得できなくても、タイマーは終了予定時刻との差から復帰します。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="install-guide-title">
+          <h2 id="install-guide-title">iPadのホーム画面版Webアプリ</h2>
+          <ol class="instruction-list">
+            <li>iPadのSafariまたはChromeで共有ボタン／メニューを開きます。</li>
+            <li>利用できる場合は「ホーム画面に追加」を選びます。</li>
+            <li>追加後、ホーム画面のTimeboxアイコンから起動します。</li>
+          </ol>
+          <p class="notice compact">Chromeから追加したホーム画面版も正式な対象です。初回はオンラインで一度すべて読み込み、オフライン準備完了後に利用してください。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="data-info-title">
+          <h2 id="data-info-title">保存データについて</h2>
+          <p>予定・履歴・現在のタイマーは、この端末・ブラウザ内のIndexedDBに保存されます。アプリ更新では削除しません。</p>
+          <p class="notice compact">ChromeやSafariなど、利用中ブラウザのサイトデータを削除すると保存内容が消える可能性があります。</p>
+          <p class="muted">JSONバックアップ、全期間検索、過去履歴編集、ドラッグ並べ替えは今後追加予定です。</p>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <dialog id="plan-dialog" aria-labelledby="plan-dialog-title">
+    <form id="plan-form" method="dialog" novalidate>
+      <div class="dialog-heading">
+        <h2 id="plan-dialog-title">予定を追加</h2>
+        <button class="icon-button" type="button" data-close-dialog="plan-dialog" aria-label="閉じる">×</button>
+      </div>
+      <div id="plan-form-error" class="form-error" role="alert" hidden></div>
+      <input id="plan-id" type="hidden">
+      <div class="field">
+        <label for="plan-title">作業名 <span aria-hidden="true">*</span></label>
+        <input id="plan-title" name="title" type="text" maxlength="120" required aria-describedby="plan-form-error">
+      </div>
+      <div class="field">
+        <label for="plan-note">メモ</label>
+        <textarea id="plan-note" name="note" rows="3" maxlength="1000"></textarea>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="plan-kind">種類</label>
+          <select id="plan-kind" name="kind">
+            <option value="work">作業</option>
+            <option value="break">休憩</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="plan-date">対象日</label>
+          <input id="plan-date" name="date" type="date" required>
+        </div>
+      </div>
+      <fieldset>
+        <legend>登録方式</legend>
+        <div class="segmented">
+          <label><input type="radio" name="scheduleType" value="duration" checked>時間指定</label>
+          <label><input type="radio" name="scheduleType" value="clock">時刻指定</label>
+        </div>
+      </fieldset>
+      <div id="duration-fields" class="field">
+        <label for="plan-duration">時間（分）</label>
+        <input id="plan-duration" name="durationMinutes" type="number" min="1" max="1440" step="1" inputmode="numeric" value="30">
+      </div>
+      <div id="clock-fields" class="field-row" hidden>
+        <div class="field">
+          <label for="plan-start-time">開始時刻</label>
+          <input id="plan-start-time" name="startTime" type="time" value="09:00">
+        </div>
+        <div class="field">
+          <label for="plan-end-time">終了時刻</label>
+          <input id="plan-end-time" name="endTime" type="time" value="09:30">
+        </div>
+      </div>
+      <p id="running-edit-notice" class="notice" hidden>実行中の予定は作業名とメモだけ編集できます。</p>
+      <div class="dialog-actions">
+        <button type="button" data-close-dialog="plan-dialog">キャンセル</button>
+        <button class="primary" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="late-start-dialog" aria-labelledby="late-start-title">
+    <form method="dialog">
+      <div class="dialog-heading"><h2 id="late-start-title">遅れて開始します</h2></div>
+      <p id="late-start-message"></p>
+      <div class="stacked-actions">
+        <button id="start-full-button" class="primary" type="button">予定時間をすべて実行</button>
+        <button id="start-until-end-button" type="button">本来の終了時刻まで実行</button>
+        <button type="button" data-close-dialog="late-start-dialog">キャンセル</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="manual-dialog" aria-labelledby="manual-title">
+    <form id="manual-form" method="dialog" novalidate>
+      <div class="dialog-heading"><h2 id="manual-title">手動で完了</h2></div>
+      <p id="manual-plan-name"></p>
+      <div id="manual-error" class="form-error" role="alert" hidden></div>
+      <div class="field">
+        <label for="manual-minutes">実績時間（分・省略時は0分）</label>
+        <input id="manual-minutes" type="number" min="0" max="10080" step="1" inputmode="numeric" aria-describedby="manual-error">
+      </div>
+      <div class="dialog-actions">
+        <button type="button" data-close-dialog="manual-dialog">キャンセル</button>
+        <button class="primary" type="submit">完了を記録</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="expired-complete-dialog" aria-labelledby="expired-complete-title">
+    <form method="dialog">
+      <div class="dialog-heading"><h2 id="expired-complete-title">実績時間を選択</h2></div>
+      <p>終了予定時刻を過ぎています。履歴へ記録する時間を選んでください。</p>
+      <div class="stacked-actions">
+        <button id="complete-planned-button" type="button">予定時間までを記録</button>
+        <button id="complete-overtime-button" class="primary" type="button">超過時間も含めて記録</button>
+        <button type="button" data-close-dialog="expired-complete-dialog">キャンセル</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <div class="dialog-heading"><h2 id="confirm-title">確認</h2></div>
+      <p id="confirm-message"></p>
+      <div class="dialog-actions">
+        <button id="confirm-cancel-button" type="button">キャンセル</button>
+        <button id="confirm-ok-button" class="primary" type="button">続ける</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="./app-version.js"></script>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
