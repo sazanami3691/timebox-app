@@ -16,6 +16,9 @@ test("主要画面とダイアログがHTMLに存在する", async () => {
     "schedule-view", "timer-view", "history-view", "side-menu", "plan-dialog",
     "late-start-dialog", "manual-dialog", "expired-complete-dialog", "confirm-dialog", "toast-region",
     "settings-view", "update-banner", "network-status", "sound-enabled", "sound-volume",
-    "enable-notification-button", "test-notification-button", "schedule-notification", "wake-lock-enabled"
+    "enable-notification-button", "test-notification-button", "schedule-notification", "wake-lock-enabled",
+    "export-backup-button", "backup-file-input", "backup-restore-dialog", "backup-replace-button",
+    "search-view", "search-query", "search-submit-button", "search-plan-results", "search-history-results",
+    "history-edit-dialog", "history-edit-confirm-dialog", "history-delete-dialog"
   ]) assert.match(html, new RegExp(`id="${id}"`));
 });

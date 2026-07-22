@@ -1,4 +1,12 @@
 import { SCHEMA_VERSION } from "./core.js";
+import {
+  assertHistoryPlanTransactionSafe,
+  buildEditedHistory,
+  chooseLatestHistory,
+  historyRevisionKey,
+  planAfterHistoryDeletion,
+  syncPlanFromHistory
+} from "./history-edit.js";
 
 const DB_NAME = "timebox-app";
 const DB_VERSION = 1;
@@ -93,6 +101,35 @@ export async function getHistoryByDate(date) {
   return result.sort((a, b) => b.recordedAt - a.recordedAt);
 }
 
+export async function getSearchSnapshot() {
+  const db = await openDatabase();
+  const tx = db.transaction([STORES.plans, STORES.history], "readonly");
+  const done = transactionDone(tx);
+  const plansRequest = tx.objectStore(STORES.plans).getAll();
+  const historyRequest = tx.objectStore(STORES.history).getAll();
+  const [plans, history] = await Promise.all([requestResult(plansRequest), requestResult(historyRequest)]);
+  await done;
+  return { plans, history };
+}
+
+export async function getHistoryEntryById(id) {
+  const db = await openDatabase();
+  const tx = db.transaction(STORES.history, "readonly");
+  const done = transactionDone(tx);
+  const result = await requestResult(tx.objectStore(STORES.history).get(id));
+  await done;
+  return result ?? null;
+}
+
+export async function getPlanById(id) {
+  const db = await openDatabase();
+  const tx = db.transaction(STORES.plans, "readonly");
+  const done = transactionDone(tx);
+  const result = await requestResult(tx.objectStore(STORES.plans).get(id));
+  await done;
+  return result ?? null;
+}
+
 export async function getCurrentTimer() {
   const db = await openDatabase();
   const tx = db.transaction(STORES.timer, "readonly");
@@ -109,6 +146,22 @@ export async function getMetaValue(key) {
   const result = await requestResult(tx.objectStore(STORES.meta).get(key));
   await done;
   return result?.value ?? null;
+}
+
+export async function getBackupSnapshot(settingsKey) {
+  const db = await openDatabase();
+  const tx = db.transaction([STORES.plans, STORES.history, STORES.meta], "readonly");
+  const done = transactionDone(tx);
+  const plansRequest = tx.objectStore(STORES.plans).getAll();
+  const historyRequest = tx.objectStore(STORES.history).getAll();
+  const settingsRequest = tx.objectStore(STORES.meta).get(settingsKey);
+  const [plans, history, settingsRecord] = await Promise.all([
+    requestResult(plansRequest),
+    requestResult(historyRequest),
+    requestResult(settingsRequest)
+  ]);
+  await done;
+  return { plans, history, settings: settingsRecord?.value ?? null };
 }
 
 export async function saveMetaValue(key, value) {
@@ -186,12 +239,152 @@ export async function commitManualCompletion(plan, historyEntry) {
   await transactionDone(tx);
 }
 
+async function historyMutationContext(historyId, expectedRevision, mutate) {
+  const hint = await getHistoryEntryById(historyId);
+  if (!hint) throw new Error("対象の履歴は既に削除されています。画面を更新してください。");
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORES.history, STORES.plans, STORES.timer], "readwrite");
+    const historyStore = tx.objectStore(STORES.history);
+    const planStore = tx.objectStore(STORES.plans);
+    const requests = {
+      current: historyStore.get(historyId),
+      related: historyStore.index("planId").getAll(hint.planId),
+      plan: planStore.get(hint.planId),
+      timer: tx.objectStore(STORES.timer).get("active")
+    };
+    const values = {};
+    let pending = Object.keys(requests).length;
+    let result;
+    let controlledError = null;
+
+    const finishReads = () => {
+      if (--pending > 0 || controlledError) return;
+      try {
+        if (!values.current) throw new Error("対象の履歴は既に削除されています。画面を更新してください。");
+        if (values.current.planId !== hint.planId) throw new Error("対象の履歴が別の操作で変更されました。画面を更新してください。");
+        if (expectedRevision && historyRevisionKey(values.current) !== expectedRevision) {
+          throw new Error("対象の履歴が別の操作で変更されました。画面を更新してやり直してください。");
+        }
+        result = mutate({
+          current: values.current,
+          related: values.related,
+          plan: values.plan ?? null,
+          timer: values.timer ?? null,
+          historyStore,
+          planStore
+        });
+      } catch (error) {
+        controlledError = error;
+        tx.abort();
+      }
+    };
+
+    for (const [key, request] of Object.entries(requests)) {
+      request.addEventListener("success", () => {
+        values[key] = request.result;
+        finishReads();
+      }, { once: true });
+      request.addEventListener("error", () => {
+        controlledError = request.error ?? new Error("履歴の最新状態を読み込めませんでした。");
+      }, { once: true });
+    }
+    tx.addEventListener("complete", () => resolve(result), { once: true });
+    tx.addEventListener("abort", () => reject(controlledError ?? tx.error ?? new Error("履歴の更新を中止しました。")), { once: true });
+    tx.addEventListener("error", () => {
+      if (!controlledError) controlledError = tx.error ?? new Error("履歴の更新に失敗しました。");
+    }, { once: true });
+  });
+}
+
+export async function updateHistoryAndRelatedPlan({ historyId, expectedRevision, changes, now = Date.now() }) {
+  return historyMutationContext(historyId, expectedRevision, ({ current, related, plan, timer, historyStore, planStore }) => {
+    const edited = buildEditedHistory(current, changes);
+    const proposedHistory = related.map((entry) => entry.id === current.id ? edited : entry);
+    assertHistoryPlanTransactionSafe(plan, proposedHistory, timer);
+    let updatedPlan = null;
+    if (plan) {
+      const latest = chooseLatestHistory(proposedHistory);
+      updatedPlan = syncPlanFromHistory(plan, latest, now);
+      planStore.put(updatedPlan);
+    }
+    historyStore.put(edited);
+    return { history: edited, plan: updatedPlan };
+  });
+}
+
+export async function deleteHistoryAndReconcilePlan({ historyId, expectedRevision, now = Date.now() }) {
+  return historyMutationContext(historyId, expectedRevision, ({ current, related, plan, timer, historyStore, planStore }) => {
+    assertHistoryPlanTransactionSafe(plan, related, timer);
+    const remaining = related.filter((entry) => entry.id !== current.id);
+    let updatedPlan = null;
+    if (plan) {
+      updatedPlan = planAfterHistoryDeletion(plan, remaining, now);
+      planStore.put(updatedPlan);
+    }
+    historyStore.delete(current.id);
+    return { deletedHistory: current, plan: updatedPlan };
+  });
+}
+
 export async function putPlansAtomically(plans) {
   const db = await openDatabase();
   const tx = db.transaction(STORES.plans, "readwrite");
   const store = tx.objectStore(STORES.plans);
   for (const plan of plans) store.add(plan);
   await transactionDone(tx);
+}
+
+export async function replaceAllFromBackup({
+  plans,
+  history,
+  settings,
+  settingsKey,
+  notificationLedgerKey
+}) {
+  const db = await openDatabase();
+  const tx = db.transaction(
+    [STORES.plans, STORES.history, STORES.timer, STORES.meta],
+    "readwrite"
+  );
+  const done = transactionDone(tx);
+  const planStore = tx.objectStore(STORES.plans);
+  const historyStore = tx.objectStore(STORES.history);
+  const timerStore = tx.objectStore(STORES.timer);
+  const metaStore = tx.objectStore(STORES.meta);
+  let timerConflict = false;
+
+  const timerRequest = timerStore.get("active");
+  timerRequest.addEventListener("success", () => {
+    if (timerRequest.result) {
+      timerConflict = true;
+      tx.abort();
+      return;
+    }
+
+    planStore.clear();
+    historyStore.clear();
+    timerStore.clear();
+    for (const plan of plans) planStore.add(plan);
+    for (const entry of history) historyStore.add(entry);
+    metaStore.put({
+      key: "schema",
+      schemaVersion: SCHEMA_VERSION,
+      databaseVersion: DB_VERSION,
+      updatedAt: Date.now()
+    });
+    metaStore.put({ key: settingsKey, value: settings, updatedAt: Date.now() });
+    metaStore.delete(notificationLedgerKey);
+  }, { once: true });
+
+  try {
+    await done;
+  } catch (error) {
+    if (timerConflict) {
+      throw new Error("実行中・一時停止中・終了待ちのタイマーがあるため、バックアップを読み込めません。先にタイマーを完了またはスキップしてください。");
+    }
+    throw error;
+  }
 }
 
 export const databaseInfo = Object.freeze({
