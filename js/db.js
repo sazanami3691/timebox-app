@@ -111,6 +111,22 @@ export async function getMetaValue(key) {
   return result?.value ?? null;
 }
 
+export async function getBackupSnapshot(settingsKey) {
+  const db = await openDatabase();
+  const tx = db.transaction([STORES.plans, STORES.history, STORES.meta], "readonly");
+  const done = transactionDone(tx);
+  const plansRequest = tx.objectStore(STORES.plans).getAll();
+  const historyRequest = tx.objectStore(STORES.history).getAll();
+  const settingsRequest = tx.objectStore(STORES.meta).get(settingsKey);
+  const [plans, history, settingsRecord] = await Promise.all([
+    requestResult(plansRequest),
+    requestResult(historyRequest),
+    requestResult(settingsRequest)
+  ]);
+  await done;
+  return { plans, history, settings: settingsRecord?.value ?? null };
+}
+
 export async function saveMetaValue(key, value) {
   const db = await openDatabase();
   const tx = db.transaction(STORES.meta, "readwrite");
@@ -192,6 +208,58 @@ export async function putPlansAtomically(plans) {
   const store = tx.objectStore(STORES.plans);
   for (const plan of plans) store.add(plan);
   await transactionDone(tx);
+}
+
+export async function replaceAllFromBackup({
+  plans,
+  history,
+  settings,
+  settingsKey,
+  notificationLedgerKey
+}) {
+  const db = await openDatabase();
+  const tx = db.transaction(
+    [STORES.plans, STORES.history, STORES.timer, STORES.meta],
+    "readwrite"
+  );
+  const done = transactionDone(tx);
+  const planStore = tx.objectStore(STORES.plans);
+  const historyStore = tx.objectStore(STORES.history);
+  const timerStore = tx.objectStore(STORES.timer);
+  const metaStore = tx.objectStore(STORES.meta);
+  let timerConflict = false;
+
+  const timerRequest = timerStore.get("active");
+  timerRequest.addEventListener("success", () => {
+    if (timerRequest.result) {
+      timerConflict = true;
+      tx.abort();
+      return;
+    }
+
+    planStore.clear();
+    historyStore.clear();
+    timerStore.clear();
+    for (const plan of plans) planStore.add(plan);
+    for (const entry of history) historyStore.add(entry);
+    metaStore.put({
+      key: "schema",
+      schemaVersion: SCHEMA_VERSION,
+      databaseVersion: DB_VERSION,
+      updatedAt: Date.now()
+    });
+    metaStore.put({ key: settingsKey, value: settings, updatedAt: Date.now() });
+    metaStore.delete(notificationLedgerKey);
+  }, { once: true });
+
+  try {
+    await done;
+  } catch (error) {
+    if (timerConflict) {
+      throw new Error("実行中・一時停止中・終了待ちのタイマーがあるため、バックアップを読み込めません。先にタイマーを完了またはスキップしてください。");
+    }
+    throw error;
+  }
 }
 
 export const databaseInfo = Object.freeze({

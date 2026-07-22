@@ -149,7 +149,7 @@
     <section id="settings-view" class="view" aria-labelledby="settings-title" hidden>
       <div class="view-heading">
         <div>
-          <p class="eyebrow">第2段階A・B</p>
+          <p class="eyebrow">第2段階A・B・C1</p>
           <h1 id="settings-title">設定・アプリ情報</h1>
         </div>
       </div>
@@ -243,7 +243,33 @@
           <h2 id="data-info-title">保存データについて</h2>
           <p>予定・履歴・現在のタイマーは、この端末・ブラウザ内のIndexedDBに保存されます。アプリ更新では削除しません。</p>
           <p class="notice compact">ChromeやSafariなど、利用中ブラウザのサイトデータを削除すると保存内容が消える可能性があります。</p>
-          <p class="muted">JSONバックアップ、全期間検索、過去履歴編集、ドラッグ並べ替えは今後追加予定です。</p>
+          <p class="muted">全期間検索、過去履歴編集、ドラッグ並べ替えは今後追加予定です。</p>
+        </section>
+
+        <section class="panel backup-panel" aria-labelledby="backup-settings-title">
+          <h2 id="backup-settings-title">バックアップと復元</h2>
+          <p>全期間の予定・確定済み履歴・現在のアプリ設定をJSONファイルへ保存できます。サイトデータ削除などに備え、定期的に書き出してください。</p>
+          <div class="backup-scope-grid">
+            <div>
+              <h3>バックアップ対象</h3>
+              <p class="muted">予定、履歴、終了音・音量・予定通知タイミング・画面点灯維持の設定</p>
+            </div>
+            <div>
+              <h3>対象外</h3>
+              <p class="muted">実行中タイマー、通知権限、通知済み台帳、Service Worker・キャッシュ</p>
+            </div>
+          </div>
+          <p id="backup-timer-warning" class="notice compact" hidden>実行中タイマーの状態はバックアップに含まれません。書き出しはできますが、復元はタイマー完了またはスキップ後に行ってください。</p>
+          <div class="settings-actions">
+            <button id="export-backup-button" class="primary" type="button">バックアップを書き出す</button>
+          </div>
+          <div class="field backup-file-field">
+            <label for="backup-file-input">復元するJSONファイル</label>
+            <input id="backup-file-input" type="file" accept=".json,application/json" aria-describedby="backup-file-name backup-status-message">
+            <p id="backup-file-name" class="file-name">ファイルは選択されていません。</p>
+          </div>
+          <p class="notice compact">復元は現在の予定・履歴・設定をすべて置き換えます。先に現在データを書き出すことを推奨します。ファイル選択だけでは置換しません。</p>
+          <p id="backup-status-message" class="status-message" role="status">バックアップ操作を待っています。</p>
         </section>
       </div>
     </section>
@@ -356,6 +382,31 @@
       <div class="dialog-actions">
         <button id="confirm-cancel-button" type="button">キャンセル</button>
         <button id="confirm-ok-button" class="primary" type="button">続ける</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="backup-restore-dialog" aria-labelledby="backup-restore-title" aria-describedby="backup-restore-warning">
+    <form method="dialog">
+      <div class="dialog-heading">
+        <h2 id="backup-restore-title">バックアップを全置換で復元</h2>
+        <button id="backup-restore-close-button" class="icon-button" type="button" aria-label="閉じる">×</button>
+      </div>
+      <dl class="status-list backup-preview-list">
+        <div><dt>作成日時</dt><dd id="backup-preview-exported-at">—</dd></div>
+        <div><dt>アプリバージョン</dt><dd id="backup-preview-app-version">—</dd></div>
+        <div><dt>予定</dt><dd id="backup-preview-plan-count">0件</dd></div>
+        <div><dt>履歴</dt><dd id="backup-preview-history-count">0件</dd></div>
+        <div><dt>設定</dt><dd>含まれます</dd></div>
+      </dl>
+      <div id="backup-restore-warning" class="form-error backup-danger-warning" role="alert">
+        現在の予定・履歴・設定はすべて置き換わり、元に戻せません。先に現在データを書き出すことを推奨します。通知権限と実行中タイマーは復元されません。
+      </div>
+      <p id="backup-restore-status" class="status-message" role="status">検証が完了しました。内容を確認してください。</p>
+      <div class="stacked-actions">
+        <button id="backup-export-current-button" type="button">現在のデータを書き出す</button>
+        <button id="backup-replace-button" class="danger" type="button">全置換して読み込む</button>
+        <button id="backup-restore-cancel-button" type="button">キャンセル</button>
       </div>
     </form>
   </dialog>

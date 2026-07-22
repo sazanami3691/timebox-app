@@ -9,6 +9,7 @@ const APP_SHELL = Object.freeze([
   "./app-version.js",
   "./js/app.js",
   "./js/alerts.js",
+  "./js/backup.js",
   "./js/core.js",
   "./js/db.js",
   "./js/pwa.js",

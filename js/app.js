@@ -19,15 +19,25 @@ import {
   validatePlan
 } from "./core.js";
 import {
+  createBackupDocument,
+  createBackupFilename,
+  readBackupFile,
+  saveBackupFile,
+  serializeBackup
+} from "./backup.js";
+import {
   commitManualCompletion,
   commitOutcome,
+  databaseInfo,
   deletePlan,
+  getBackupSnapshot,
   getCurrentTimer,
   getHistoryByDate,
   getMetaValue,
   getPlansByDate,
   initializeDatabase,
   putPlansAtomically,
+  replaceAllFromBackup,
   saveCurrentTimer,
   saveMetaValue,
   savePlan,
@@ -62,7 +72,10 @@ const state = {
   timerSyncing: false,
   scheduleNotificationChecking: false,
   scheduleNotificationCheckAt: Date.now(),
-  settings: DEFAULT_SETTINGS
+  settings: DEFAULT_SETTINGS,
+  backupPreview: null,
+  backupBusy: false,
+  backupReloadScheduled: false
 };
 
 const pwaManager = createPwaManager({ getTimerStatus: () => state.timer?.status ?? "idle" });
@@ -92,6 +105,7 @@ const lateStartDialog = $("#late-start-dialog");
 const manualDialog = $("#manual-dialog");
 const expiredCompleteDialog = $("#expired-complete-dialog");
 const confirmDialog = $("#confirm-dialog");
+const backupRestoreDialog = $("#backup-restore-dialog");
 const toastRegion = $("#toast-region");
 
 function createElement(tag, className, text) {
@@ -213,6 +227,12 @@ function updateHeader() {
     screenLabel.textContent = state.selectedDate === today() ? "今日の予定" : "日付別予定";
     headerDate.textContent = formatDateLabel(state.selectedDate);
   }
+  renderBackupTimerState();
+}
+
+function renderBackupTimerState() {
+  const active = Boolean(state.timer && ACTIVE_TIMER_STATES.has(state.timer.status));
+  $("#backup-timer-warning").hidden = !active;
 }
 
 function renderPwaState(pwaState) {
@@ -305,6 +325,152 @@ async function updateSettings(patch) {
   } catch (error) {
     renderSettingsControls();
     showError(error, "設定を保存できませんでした。変更は反映していません。");
+  }
+}
+
+function setBackupStatus(message, error = false) {
+  const status = $("#backup-status-message");
+  status.textContent = message;
+  status.classList.toggle("error", error);
+}
+
+function setBackupBusy(busy, message = "") {
+  state.backupBusy = busy;
+  $("#export-backup-button").disabled = busy;
+  $("#backup-export-current-button").disabled = busy;
+  $("#backup-replace-button").disabled = busy || !state.backupPreview;
+  $("#backup-file-input").disabled = busy;
+  if (message) {
+    setBackupStatus(message);
+    $("#backup-restore-status").textContent = message;
+  }
+  $("#export-backup-button").textContent = busy ? "処理中…" : "バックアップを書き出す";
+  $("#backup-replace-button").textContent = busy ? "処理中…" : "全置換して読み込む";
+}
+
+async function exportBackup() {
+  if (state.backupBusy) return false;
+  setBackupBusy(true, "予定・履歴・設定を読み取っています…");
+  try {
+    const [snapshot, currentTimer] = await Promise.all([
+      getBackupSnapshot(SETTINGS_META_KEY),
+      getCurrentTimer()
+    ]);
+    const document = createBackupDocument({
+      ...snapshot,
+      settings: normalizeSettings(snapshot.settings ?? state.settings),
+      schemaVersion: databaseInfo.schemaVersion,
+      databaseVersion: databaseInfo.version,
+      appVersion: globalThis.TIMEBOX_APP_VERSION ?? "unknown"
+    });
+    const result = await saveBackupFile({
+      text: serializeBackup(document),
+      filename: createBackupFilename()
+    });
+    if (result.method === "cancelled") {
+      setBackupStatus("共有または保存をキャンセルしました。データは変更していません。");
+      $("#backup-restore-status").textContent = "現在データの書き出しはキャンセルされました。復元はまだ実行していません。";
+      return false;
+    }
+    const timerNotice = currentTimer ? " 実行中タイマーの状態はバックアップに含まれません。" : "";
+    const message = `予定${document.data.plans.length}件、履歴${document.data.history.length}件、設定をバックアップしました。${timerNotice}`;
+    setBackupStatus(message);
+    if (backupRestoreDialog.open) $("#backup-restore-status").textContent = `${message} 復元する内容を引き続き確認できます。`;
+    showToast(message);
+    return true;
+  } catch (error) {
+    setBackupStatus(error?.message || "バックアップを書き出せませんでした。", true);
+    showError(error, "バックアップを書き出せませんでした。既存データは変更していません。");
+    return false;
+  } finally {
+    setBackupBusy(false);
+  }
+}
+
+function clearBackupPreview({ close = true, message = "バックアップ操作を待っています。" } = {}) {
+  state.backupPreview = null;
+  $("#backup-file-input").value = "";
+  $("#backup-file-name").textContent = "ファイルは選択されていません。";
+  $("#backup-replace-button").disabled = true;
+  setBackupStatus(message);
+  if (close) closeDialog(backupRestoreDialog);
+}
+
+function showBackupPreview(document) {
+  state.backupPreview = document;
+  $("#backup-preview-exported-at").textContent = new Date(document.exportedAt).toLocaleString("ja-JP");
+  $("#backup-preview-app-version").textContent = document.appVersion;
+  $("#backup-preview-plan-count").textContent = `${document.data.plans.length}件`;
+  $("#backup-preview-history-count").textContent = `${document.data.history.length}件`;
+  $("#backup-restore-status").textContent = "全件の検証が完了しました。まだデータは変更していません。";
+  $("#backup-replace-button").disabled = false;
+  openDialog(backupRestoreDialog, "#backup-restore-cancel-button");
+}
+
+async function handleBackupFileSelection(event) {
+  const input = event.currentTarget;
+  const file = input.files?.[0];
+  $("#backup-file-name").textContent = file?.name || "ファイルは選択されていません。";
+  if (!file || state.backupBusy) {
+    input.value = "";
+    if (!file) setBackupStatus("JSONファイルが選択されていません。", true);
+    return;
+  }
+
+  setBackupBusy(true, "バックアップファイルを検証しています…");
+  try {
+    const currentTimer = await getCurrentTimer();
+    if (currentTimer) {
+      throw new Error("実行中・一時停止中・終了待ちのタイマーがあるため、バックアップを読み込めません。先にタイマーを完了またはスキップしてください。");
+    }
+    const document = await readBackupFile(file, {
+      schemaVersion: databaseInfo.schemaVersion,
+      databaseVersion: databaseInfo.version
+    });
+    setBackupStatus(`「${file.name}」を検証しました。確認ダイアログで全置換を承認するまでデータは変更されません。`);
+    showBackupPreview(document);
+  } catch (error) {
+    state.backupPreview = null;
+    setBackupStatus(error?.message || "バックアップファイルを読み込めませんでした。", true);
+    showError(error, "バックアップファイルを読み込めませんでした。既存データは変更していません。");
+  } finally {
+    input.value = "";
+    setBackupBusy(false);
+  }
+}
+
+async function restoreBackup() {
+  if (state.backupBusy || !state.backupPreview) return;
+  const preview = state.backupPreview;
+  setBackupBusy(true, "実行中タイマーを再確認し、データを安全に置き換えています…");
+  try {
+    await replaceAllFromBackup({
+      plans: preview.data.plans,
+      history: preview.data.history,
+      settings: preview.data.settings,
+      settingsKey: SETTINGS_META_KEY,
+      notificationLedgerKey: NOTIFICATION_LEDGER_META_KEY
+    });
+    alertManager.stopEndSound();
+    state.timer = null;
+    state.settings = preview.data.settings;
+    renderSettingsControls();
+    alertManager.notifySettingsChanged();
+    pwaManager.notifyTimerStateChanged();
+    await wakeLockManager.sync();
+    closeDialog(backupRestoreDialog);
+    setBackupStatus(`予定${preview.data.plans.length}件、履歴${preview.data.history.length}件、設定を復元しました。画面を再読み込みします。`);
+    showToast("バックアップを全置換で復元しました。画面を再読み込みします。", { duration: 4000 });
+    if (!state.backupReloadScheduled) {
+      state.backupReloadScheduled = true;
+      window.setTimeout(() => window.location.reload(), 700);
+    }
+  } catch (error) {
+    $("#backup-restore-status").textContent = error?.message || "復元に失敗しました。既存データは変更していません。";
+    setBackupStatus(error?.message || "復元に失敗しました。既存データは変更していません。", true);
+    showError(error, "復元に失敗しました。トランザクションは中止され、既存データを維持しています。");
+  } finally {
+    setBackupBusy(false);
   }
 }
 
@@ -850,6 +1016,7 @@ function bindEvents() {
     if (!topDialog) return;
     event.preventDefault();
     if (topDialog === confirmDialog) $("#confirm-cancel-button").click();
+    else if (topDialog === backupRestoreDialog) $("#backup-restore-cancel-button").click();
     else closeDialog(topDialog);
   });
   document.querySelectorAll("[data-navigation]").forEach((button) => button.addEventListener("click", async () => {
@@ -904,6 +1071,17 @@ function bindEvents() {
   $("#test-notification-button").addEventListener("click", () => alertManager.testNotification());
   $("#schedule-notification").addEventListener("change", (event) => updateSettings({ scheduleNotification: event.target.value }));
   $("#wake-lock-enabled").addEventListener("change", (event) => updateSettings({ wakeLockEnabled: event.target.checked }));
+  $("#export-backup-button").addEventListener("click", exportBackup);
+  $("#backup-file-input").addEventListener("change", handleBackupFileSelection);
+  $("#backup-export-current-button").addEventListener("click", exportBackup);
+  $("#backup-replace-button").addEventListener("click", restoreBackup);
+  for (const id of ["backup-restore-close-button", "backup-restore-cancel-button"]) {
+    $(`#${id}`).addEventListener("click", () => clearBackupPreview({ message: "バックアップの読み込みをキャンセルしました。データは変更していません。" }));
+  }
+  backupRestoreDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    clearBackupPreview({ message: "バックアップの読み込みをキャンセルしました。データは変更していません。" });
+  });
   for (const eventName of ["pageshow", "focus"]) window.addEventListener(eventName, () => {
     void syncTimer();
     void pollScheduleNotifications();

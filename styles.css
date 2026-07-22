@@ -141,6 +141,16 @@ textarea { min-height: 84px; resize: vertical; }
 .status-message { min-height: 48px; border-left: 4px solid var(--ui-border-strong); padding: 10px 12px; background: #121821; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-md); margin: var(--ui-space-md) 0; }
 .settings-actions button { flex: 1 1 160px; }
+.backup-panel { grid-column: 1 / -1; }
+.backup-scope-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ui-space-md); margin: var(--ui-space-md) 0; }
+.backup-scope-grid > div { min-width: 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); padding: var(--ui-space-md); background: #121821; }
+.backup-scope-grid h3 { margin: 0 0 var(--ui-space-sm); font-size: 1rem; }
+.backup-scope-grid p { margin-bottom: 0; }
+.backup-file-field input[type="file"] { min-width: 0; padding: 6px; overflow: hidden; }
+.backup-file-field input[type="file"]::file-selector-button { min-height: 40px; margin-right: 10px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); padding: 7px 11px; background: var(--ui-control); color: var(--ui-text); }
+.file-name { max-width: 100%; margin: 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+.backup-preview-list { margin-bottom: var(--ui-space-lg); }
+.backup-danger-warning { white-space: normal; }
 .setting-toggle { display: flex; min-height: var(--ui-touch-min); align-items: center; gap: 12px; margin-bottom: var(--ui-space-md); cursor: pointer; }
 .setting-toggle input { width: 24px; min-height: 24px; flex: 0 0 24px; accent-color: var(--ui-accent); }
 .setting-toggle span { font-weight: 700; }
@@ -193,6 +203,7 @@ fieldset { margin: 0 0 var(--ui-space-md); border: 1px solid var(--ui-border); b
   .metric:last-child { grid-column: 1 / -1; }
   .schedule-tools { align-items: stretch; flex-direction: column; }
   .settings-grid { grid-template-columns: 1fr; }
+  .backup-scope-grid { grid-template-columns: 1fr; }
   .update-banner { align-items: stretch; flex-direction: column; }
   .update-banner button { width: 100%; }
 }
