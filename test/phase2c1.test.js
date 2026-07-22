@@ -288,11 +288,11 @@ test("画面処理は検証後だけプレビューし、確定時だけDB全置
   assert.match(source, /state\.backupBusy/);
 });
 
-test("PWA版は1.3.0でbackupモジュールをキャッシュし、既存更新保留を維持する", async () => {
+test("PWA版は1.4.0でbackupモジュールをキャッシュし、既存更新保留を維持する", async () => {
   const version = /TIMEBOX_APP_VERSION = "([^"]+)"/.exec(await readText("app-version.js"))?.[1];
   const packageJson = JSON.parse(await readText("package.json"));
   const sw = await readText("sw.js");
-  assert.equal(version, "1.3.0");
+  assert.equal(version, "1.4.0");
   assert.equal(packageJson.version, version);
   assert.match(sw, /"\.\/js\/backup\.js"/);
   assert.match(sw, /SKIP_WAITING/);

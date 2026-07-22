@@ -40,7 +40,7 @@
     <button type="button" data-navigation="history">履歴</button>
     <button id="menu-timer-button" type="button" data-navigation="timer" disabled>実行中タイマーへ戻る</button>
     <hr>
-    <button type="button" disabled>検索 <span>今後追加予定</span></button>
+    <button type="button" data-navigation="search">検索</button>
     <button type="button" data-navigation="settings">設定・アプリ情報</button>
   </nav>
 
@@ -128,7 +128,7 @@
     <section id="history-view" class="view" aria-labelledby="history-title" hidden>
       <div class="view-heading">
         <div>
-          <p class="eyebrow">閲覧専用</p>
+          <p class="eyebrow">日別集計・履歴編集</p>
           <h1 id="history-title">日別履歴</h1>
         </div>
       </div>
@@ -146,10 +146,40 @@
       </section>
     </section>
 
+    <section id="search-view" class="view" aria-labelledby="search-title" hidden>
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">全期間</p>
+          <h1 id="search-title">予定・履歴を検索</h1>
+        </div>
+      </div>
+      <form id="search-form" class="panel search-form" role="search">
+        <div class="field">
+          <label for="search-query">作業名またはメモ</label>
+          <input id="search-query" type="search" maxlength="200" autocomplete="off" enterkeyhint="search" aria-describedby="search-help search-status">
+        </div>
+        <p id="search-help" class="muted">全期間の予定と履歴を、文字の一部が一致するかで検索します。英字の大文字・小文字と全角・半角英数字は可能な範囲で同一視します。</p>
+        <div class="search-actions">
+          <button id="search-submit-button" class="primary" type="submit">検索</button>
+          <button id="search-clear-button" type="button">クリア</button>
+        </div>
+        <p id="search-status" class="status-message" role="status">検索語を入力し、検索ボタンを押してください。</p>
+        <p id="search-summary" class="muted" aria-live="polite"></p>
+      </form>
+      <section class="panel" aria-labelledby="search-plan-title">
+        <h2 id="search-plan-title">予定結果</h2>
+        <div id="search-plan-results" class="card-list"></div>
+      </section>
+      <section class="panel" aria-labelledby="search-history-title">
+        <h2 id="search-history-title">履歴結果</h2>
+        <div id="search-history-results" class="card-list"></div>
+      </section>
+    </section>
+
     <section id="settings-view" class="view" aria-labelledby="settings-title" hidden>
       <div class="view-heading">
         <div>
-          <p class="eyebrow">第2段階A・B・C1</p>
+          <p class="eyebrow">第2段階A・B・C1・C2</p>
           <h1 id="settings-title">設定・アプリ情報</h1>
         </div>
       </div>
@@ -243,7 +273,7 @@
           <h2 id="data-info-title">保存データについて</h2>
           <p>予定・履歴・現在のタイマーは、この端末・ブラウザ内のIndexedDBに保存されます。アプリ更新では削除しません。</p>
           <p class="notice compact">ChromeやSafariなど、利用中ブラウザのサイトデータを削除すると保存内容が消える可能性があります。</p>
-          <p class="muted">全期間検索、過去履歴編集、ドラッグ並べ替えは今後追加予定です。</p>
+          <p class="muted">全期間検索と確認付きの履歴編集・削除を利用できます。長押しドラッグ並べ替えは今後追加予定です。</p>
         </section>
 
         <section class="panel backup-panel" aria-labelledby="backup-settings-title">
@@ -371,6 +401,72 @@
         <button id="complete-planned-button" type="button">予定時間までを記録</button>
         <button id="complete-overtime-button" class="primary" type="button">超過時間も含めて記録</button>
         <button type="button" data-close-dialog="expired-complete-dialog">キャンセル</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="history-edit-dialog" aria-labelledby="history-edit-title">
+    <form id="history-edit-form" method="dialog" novalidate>
+      <div class="dialog-heading"><h2 id="history-edit-title">履歴を編集</h2></div>
+      <div id="history-edit-error" class="form-error" role="alert" hidden></div>
+      <dl class="status-list compact-status-list">
+        <div><dt>対象日</dt><dd id="history-edit-date">—</dd></div>
+        <div><dt>記録時刻</dt><dd id="history-edit-recorded-at">—</dd></div>
+      </dl>
+      <div class="field">
+        <label for="history-edit-name">作業名</label>
+        <input id="history-edit-name" type="text" maxlength="120" required aria-describedby="history-edit-error">
+      </div>
+      <div class="field">
+        <label for="history-edit-note">メモ</label>
+        <textarea id="history-edit-note" maxlength="1000" aria-describedby="history-edit-error"></textarea>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="history-edit-kind">種類</label>
+          <select id="history-edit-kind"><option value="work">作業</option><option value="break">休憩</option></select>
+        </div>
+        <div class="field">
+          <label for="history-edit-outcome">結果</label>
+          <select id="history-edit-outcome"><option value="completed">完了</option><option value="skipped">スキップ</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="history-edit-minutes">実績時間（分）</label>
+        <input id="history-edit-minutes" type="number" min="0" max="525600" step="1" inputmode="numeric" required aria-describedby="history-edit-error">
+      </div>
+      <p class="muted">履歴ID、予定ID、日付、予定時間、開始時刻、記録時刻、記録元は変更できません。</p>
+      <div class="dialog-actions">
+        <button id="history-edit-cancel-button" type="button">キャンセル</button>
+        <button id="history-edit-review-button" class="primary" type="submit">確認へ進む</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="history-edit-confirm-dialog" aria-labelledby="history-edit-confirm-title">
+    <form method="dialog">
+      <div class="dialog-heading"><h2 id="history-edit-confirm-title">履歴の変更を確認</h2></div>
+      <p id="history-edit-confirm-name"></p>
+      <dl id="history-edit-changes" class="status-list compact-status-list"></dl>
+      <p id="history-edit-plan-sync-note" class="notice compact"></p>
+      <p id="history-edit-confirm-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button id="history-edit-confirm-cancel-button" type="button">キャンセル</button>
+        <button id="history-edit-save-button" class="primary" type="button">変更を保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="history-delete-dialog" aria-labelledby="history-delete-title">
+    <form method="dialog">
+      <div class="dialog-heading"><h2 id="history-delete-title">履歴を削除</h2></div>
+      <p id="history-delete-target"></p>
+      <div class="form-error" role="alert">履歴記録を削除します。専用の元に戻す機能はありません。先にJSONバックアップを取ることを推奨します。</div>
+      <p>関連予定が残っている場合、残存履歴がなければ予定を未完了へ戻し、残存履歴があれば最新の履歴へ同期します。</p>
+      <p id="history-delete-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button id="history-delete-cancel-button" type="button">キャンセル</button>
+        <button id="history-delete-confirm-button" class="danger" type="button">履歴を削除</button>
       </div>
     </form>
   </dialog>
