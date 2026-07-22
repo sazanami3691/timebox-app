@@ -15,6 +15,7 @@ test("主要画面とダイアログがHTMLに存在する", async () => {
   for (const id of [
     "schedule-view", "timer-view", "history-view", "side-menu", "plan-dialog",
     "late-start-dialog", "manual-dialog", "expired-complete-dialog", "confirm-dialog", "toast-region",
-    "settings-view", "update-banner", "network-status"
+    "settings-view", "update-banner", "network-status", "sound-enabled", "sound-volume",
+    "enable-notification-button", "test-notification-button", "schedule-notification", "wake-lock-enabled"
   ]) assert.match(html, new RegExp(`id="${id}"`));
 });

@@ -149,7 +149,7 @@
     <section id="settings-view" class="view" aria-labelledby="settings-title" hidden>
       <div class="view-heading">
         <div>
-          <p class="eyebrow">第2段階A</p>
+          <p class="eyebrow">第2段階A・B</p>
           <h1 id="settings-title">設定・アプリ情報</h1>
         </div>
       </div>
@@ -176,21 +176,74 @@
           <p class="muted">新しい版は自動適用しません。実行中・一時停止中・終了待ちのタイマーがある場合、更新はタイマー終了後まで保留します。</p>
         </section>
 
+        <section class="panel" aria-labelledby="sound-settings-title">
+          <h2 id="sound-settings-title">タイマー終了音</h2>
+          <label class="setting-toggle" for="sound-enabled">
+            <input id="sound-enabled" type="checkbox">
+            <span>終了音を3回再生する</span>
+          </label>
+          <div class="field">
+            <label for="sound-volume">音量 <output id="sound-volume-output" for="sound-volume">25%</output></label>
+            <input id="sound-volume" type="range" min="0" max="100" step="1" value="25">
+          </div>
+          <button id="test-sound-button" type="button">音をテスト</button>
+          <p id="sound-status-message" class="status-message" role="status">音声機能を確認しています。</p>
+          <p class="muted">最初に「音をテスト」を押すと、ブラウザが音声を利用できる状態になります。端末の消音設定や音量にも影響されます。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="notification-settings-title">
+          <h2 id="notification-settings-title">通知と予定時刻通知</h2>
+          <dl class="status-list">
+            <div><dt>通知機能</dt><dd id="notification-support-status">確認中</dd></div>
+            <div><dt>通知権限</dt><dd id="notification-permission-status">確認中</dd></div>
+          </dl>
+          <div class="settings-actions">
+            <button id="enable-notification-button" type="button">通知を有効にする</button>
+            <button id="test-notification-button" type="button">通知をテスト</button>
+          </div>
+          <div class="field">
+            <label for="schedule-notification">時刻指定予定の通知タイミング</label>
+            <select id="schedule-notification">
+              <option value="none">通知なし</option>
+              <option value="start">開始時刻のみ</option>
+              <option value="5">5分前＋開始時刻</option>
+              <option value="10">10分前＋開始時刻</option>
+              <option value="15">15分前＋開始時刻</option>
+            </select>
+          </div>
+          <p id="notification-status-message" class="status-message" role="status">通知機能を確認しています。</p>
+          <p class="notice compact">iPadではホーム画面版Webアプリを主な確認対象とします。Safari通常タブ、Chrome通常タブ、Chromeから追加したホーム画面版では利用可否が異なる場合があります。アプリを完全に閉じている間の通知は保証されません。</p>
+        </section>
+
+        <section class="panel" aria-labelledby="wake-lock-settings-title">
+          <h2 id="wake-lock-settings-title">画面点灯維持</h2>
+          <label class="setting-toggle" for="wake-lock-enabled">
+            <input id="wake-lock-enabled" type="checkbox">
+            <span>タイマー中は画面を点灯したままにする</span>
+          </label>
+          <dl class="status-list">
+            <div><dt>対応状況</dt><dd id="wake-lock-support-status">確認中</dd></div>
+            <div><dt>現在状態</dt><dd id="wake-lock-active-status">確認中</dd></div>
+          </dl>
+          <p id="wake-lock-status-message" class="status-message" role="status">画面点灯維持機能を確認しています。</p>
+          <p class="muted">running中だけ取得し、一時停止・終了待ち・完了・スキップでは解除します。取得できなくても、タイマーは終了予定時刻との差から復帰します。</p>
+        </section>
+
         <section class="panel" aria-labelledby="install-guide-title">
-          <h2 id="install-guide-title">iPadのホーム画面へ追加</h2>
+          <h2 id="install-guide-title">iPadのホーム画面版Webアプリ</h2>
           <ol class="instruction-list">
-            <li>Safariの共有ボタンを開きます。</li>
-            <li>「ホーム画面に追加」を選びます。</li>
+            <li>iPadのSafariまたはChromeで共有ボタン／メニューを開きます。</li>
+            <li>利用できる場合は「ホーム画面に追加」を選びます。</li>
             <li>追加後、ホーム画面のTimeboxアイコンから起動します。</li>
           </ol>
-          <p class="notice compact">初回はオンラインで一度すべて読み込んでください。オフライン準備完了後から、通信がなくても起動できます。</p>
+          <p class="notice compact">Chromeから追加したホーム画面版も正式な対象です。初回はオンラインで一度すべて読み込み、オフライン準備完了後に利用してください。</p>
         </section>
 
         <section class="panel" aria-labelledby="data-info-title">
           <h2 id="data-info-title">保存データについて</h2>
           <p>予定・履歴・現在のタイマーは、この端末・ブラウザ内のIndexedDBに保存されます。アプリ更新では削除しません。</p>
-          <p class="notice compact">Safariの履歴やWebサイトデータを削除すると、保存内容が消える可能性があります。</p>
-          <p class="muted">JSONバックアップは今後追加予定です。通知、終了音、画面点灯維持もこの段階では未実装です。</p>
+          <p class="notice compact">ChromeやSafariなど、利用中ブラウザのサイトデータを削除すると保存内容が消える可能性があります。</p>
+          <p class="muted">JSONバックアップ、全期間検索、過去履歴編集、ドラッグ並べ替えは今後追加予定です。</p>
         </section>
       </div>
     </section>

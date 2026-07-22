@@ -141,6 +141,11 @@ textarea { min-height: 84px; resize: vertical; }
 .status-message { min-height: 48px; border-left: 4px solid var(--ui-border-strong); padding: 10px 12px; background: #121821; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-md); margin: var(--ui-space-md) 0; }
 .settings-actions button { flex: 1 1 160px; }
+.setting-toggle { display: flex; min-height: var(--ui-touch-min); align-items: center; gap: 12px; margin-bottom: var(--ui-space-md); cursor: pointer; }
+.setting-toggle input { width: 24px; min-height: 24px; flex: 0 0 24px; accent-color: var(--ui-accent); }
+.setting-toggle span { font-weight: 700; }
+input[type="range"] { padding-inline: 0; accent-color: var(--ui-accent); }
+output { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
 .instruction-list { display: grid; gap: 10px; padding-left: 1.5rem; }
 .notice.compact { margin: var(--ui-space-md) 0 0; }
 

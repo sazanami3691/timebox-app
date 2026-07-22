@@ -24,15 +24,25 @@ import {
   deletePlan,
   getCurrentTimer,
   getHistoryByDate,
+  getMetaValue,
   getPlansByDate,
   initializeDatabase,
   putPlansAtomically,
   saveCurrentTimer,
+  saveMetaValue,
   savePlan,
   savePlanAndTimer,
   startCurrentTimer
 } from "./db.js";
+import { createAlertManager } from "./alerts.js";
 import { createPwaManager } from "./pwa.js";
+import {
+  DEFAULT_SETTINGS,
+  NOTIFICATION_LEDGER_META_KEY,
+  SETTINGS_META_KEY,
+  normalizeSettings
+} from "./settings.js";
+import { createWakeLockManager } from "./wake-lock.js";
 
 const $ = (selector) => document.querySelector(selector);
 const today = () => localDateString(new Date());
@@ -49,10 +59,22 @@ const state = {
   pendingStart: null,
   manualPlan: null,
   undoTimer: null,
-  timerSyncing: false
+  timerSyncing: false,
+  scheduleNotificationChecking: false,
+  scheduleNotificationCheckAt: Date.now(),
+  settings: DEFAULT_SETTINGS
 };
 
 const pwaManager = createPwaManager({ getTimerStatus: () => state.timer?.status ?? "idle" });
+const alertManager = createAlertManager({
+  getSettings: () => state.settings,
+  loadLedger: () => getMetaValue(NOTIFICATION_LEDGER_META_KEY),
+  saveLedger: (ledger) => saveMetaValue(NOTIFICATION_LEDGER_META_KEY, ledger)
+});
+const wakeLockManager = createWakeLockManager({
+  getTimerStatus: () => state.timer?.status ?? "idle",
+  getEnabled: () => state.settings.wakeLockEnabled
+});
 
 const loading = $("#loading");
 const app = $("#app");
@@ -229,6 +251,63 @@ function renderPwaState(pwaState) {
   bannerButton.textContent = pwaState.updateBlocked ? "タイマー終了後に更新" : "更新する";
 }
 
+function renderSettingsControls() {
+  $("#sound-enabled").checked = state.settings.soundEnabled;
+  $("#sound-volume").value = String(Math.round(state.settings.soundVolume * 100));
+  $("#sound-volume-output").textContent = `${Math.round(state.settings.soundVolume * 100)}%`;
+  $("#sound-volume").disabled = !state.settings.soundEnabled;
+  $("#test-sound-button").disabled = !state.settings.soundEnabled;
+  $("#schedule-notification").value = state.settings.scheduleNotification;
+  $("#wake-lock-enabled").checked = state.settings.wakeLockEnabled;
+}
+
+function renderAlertState(alertState) {
+  const permissionLabels = {
+    default: "default（未選択）",
+    granted: "granted（許可済み）",
+    denied: "denied（拒否済み）",
+    unavailable: "利用不可"
+  };
+  $("#notification-support-status").textContent = alertState.notificationSupported ? "利用可能" : "利用不可";
+  $("#notification-permission-status").textContent = permissionLabels[alertState.notificationPermission] ?? alertState.notificationPermission;
+  $("#notification-status-message").textContent = alertState.notificationMessage;
+  $("#sound-status-message").textContent = !alertState.audioSupported
+    ? "このブラウザまたは起動方法ではWeb Audio APIを利用できません。"
+    : alertState.audioMessage;
+  const enableButton = $("#enable-notification-button");
+  enableButton.disabled = !alertState.notificationSupported || alertState.notificationPermission === "denied" || alertState.notificationPermission === "granted";
+  enableButton.textContent = alertState.notificationPermission === "granted"
+    ? "通知は有効です"
+    : alertState.notificationPermission === "denied"
+      ? "端末設定で確認"
+      : "通知を有効にする";
+  $("#test-notification-button").disabled = alertState.notificationPermission !== "granted";
+  $("#test-sound-button").disabled = !alertState.audioSupported || !state.settings.soundEnabled;
+}
+
+function renderWakeLockState(wakeState) {
+  $("#wake-lock-support-status").textContent = wakeState.supported ? "利用可能" : "利用不可";
+  $("#wake-lock-active-status").textContent = wakeState.active ? "取得中" : "解除中";
+  $("#wake-lock-status-message").textContent = wakeState.message;
+  const checkbox = $("#wake-lock-enabled");
+  checkbox.disabled = !wakeState.supported;
+  if (!wakeState.supported) checkbox.checked = false;
+}
+
+async function updateSettings(patch) {
+  const next = normalizeSettings({ ...state.settings, ...patch });
+  try {
+    await saveMetaValue(SETTINGS_META_KEY, next);
+    state.settings = next;
+    renderSettingsControls();
+    alertManager.notifySettingsChanged();
+    await wakeLockManager.sync();
+  } catch (error) {
+    renderSettingsControls();
+    showError(error, "設定を保存できませんでした。変更は反映していません。");
+  }
+}
+
 async function showView(view) {
   closeMenu();
   if (view === "timer" && !state.timer) {
@@ -332,7 +411,7 @@ function renderTimer() {
   const expired = state.timer.status === "expired";
   $("#timer-panel").classList.toggle("expired", expired);
   $("#timer-title").textContent = state.timer.title;
-  $("#timer-status").textContent = expired ? "終了待ち" : state.timer.status === "paused" ? "一時停止中" : "実行中";
+  $("#timer-status").textContent = expired ? "タイムボックス終了" : state.timer.status === "paused" ? "一時停止中" : "実行中";
   $("#timer-clock").textContent = expired ? "終了" : formatDuration(timerRemainingMs(state.timer, now) + 999, true);
   $("#timer-overtime").hidden = !expired;
   $("#timer-overtime").textContent = expired ? `+${Math.floor(timerOvertimeMs(state.timer, now) / MINUTE_MS)}分` : "";
@@ -488,6 +567,7 @@ async function startPlan(plan, targetMs) {
     await startCurrentTimer(timer);
     state.timer = timer;
     pwaManager.notifyTimerStateChanged();
+    await wakeLockManager.sync();
     closeDialog(lateStartDialog);
     await showView("timer");
   } catch (error) {
@@ -533,6 +613,7 @@ function createHistoryEntry(plan, outcome, actualMs, timer = null, source = "tim
 
 async function finalizeTimer(outcome, options = {}) {
   if (!state.timer) return;
+  alertManager.stopEndSound();
   try {
     const now = Date.now();
     const timer = reduceTimer(state.timer, { type: "sync" }, now);
@@ -545,6 +626,7 @@ async function finalizeTimer(outcome, options = {}) {
     await commitOutcome(updatedPlan, history);
     state.timer = null;
     pwaManager.notifyTimerStateChanged();
+    await wakeLockManager.sync();
     closeDialog(expiredCompleteDialog);
     state.selectedDate = timer.planDate;
     await loadSchedule(timer.planDate);
@@ -559,11 +641,23 @@ async function syncTimer({ persist = true } = {}) {
   if (!state.timer || state.timerSyncing) return;
   state.timerSyncing = true;
   try {
+    const previousStatus = state.timer.status;
     const synced = reduceTimer(state.timer, { type: "sync" }, Date.now());
-    const changed = synced.status !== state.timer.status;
+    const changed = synced.status !== previousStatus;
     state.timer = synced;
-    if (changed) pwaManager.notifyTimerStateChanged();
     if (persist && changed && synced.status === "expired") await saveCurrentTimer(synced);
+    if (changed) {
+      pwaManager.notifyTimerStateChanged();
+      await wakeLockManager.sync();
+      if (previousStatus === "running" && synced.status === "expired") {
+        await alertManager.handleTimerExpired(synced);
+        showToast(`「${synced.title}」のタイムボックスが終了しました。`, {
+          actionLabel: "タイマーへ",
+          onAction: () => showView("timer"),
+          duration: 10000
+        });
+      }
+    }
     if (state.view === "timer") renderTimer();
     updateHeader();
   } catch (error) {
@@ -575,11 +669,13 @@ async function syncTimer({ persist = true } = {}) {
 
 async function timerAction(type) {
   if (!state.timer) return;
+  if (type === "extend") alertManager.stopEndSound();
   try {
     const next = reduceTimer(state.timer, { type }, Date.now());
     await saveCurrentTimer(next);
     state.timer = next;
     pwaManager.notifyTimerStateChanged();
+    await wakeLockManager.sync();
     renderTimer();
   } catch (error) {
     showError(error, "タイマー操作を保存できませんでした。");
@@ -711,6 +807,22 @@ async function submitManual(event) {
   }
 }
 
+async function pollScheduleNotifications() {
+  if (state.scheduleNotificationChecking) return;
+  state.scheduleNotificationChecking = true;
+  const now = Date.now();
+  const previousCheck = state.scheduleNotificationCheckAt;
+  state.scheduleNotificationCheckAt = now;
+  try {
+    const plans = await getPlansByDate(today());
+    await alertManager.checkScheduleNotifications(plans, previousCheck, now);
+  } catch (error) {
+    console.warn("Schedule notification check failed", error);
+  } finally {
+    state.scheduleNotificationChecking = false;
+  }
+}
+
 async function handleCardAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
@@ -764,11 +876,13 @@ function bindEvents() {
   $("#pause-resume-button").addEventListener("click", () => timerAction(state.timer?.status === "paused" ? "resume" : "pause"));
   $("#extend-timer-button").addEventListener("click", () => timerAction("extend"));
   $("#complete-timer-button").addEventListener("click", async () => {
+    alertManager.stopEndSound();
     await syncTimer();
     if (state.timer?.status === "expired") openDialog(expiredCompleteDialog, "#complete-overtime-button");
     else await finalizeTimer("completed");
   });
   $("#skip-timer-button").addEventListener("click", async () => {
+    alertManager.stopEndSound();
     const confirmed = await showConfirmation("このタイムボックスをスキップしますか？計測済み時間は履歴へ記録されます。", "スキップ");
     if (confirmed) await finalizeTimer("skipped", { includeOvertime: true });
   });
@@ -782,25 +896,50 @@ function bindEvents() {
   $("#check-update-button").addEventListener("click", () => pwaManager.checkForUpdate());
   $("#apply-update-button").addEventListener("click", () => pwaManager.applyUpdate());
   $("#update-banner-button").addEventListener("click", () => pwaManager.applyUpdate());
-  for (const eventName of ["pageshow", "focus"]) window.addEventListener(eventName, () => syncTimer());
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) syncTimer(); });
+  $("#sound-enabled").addEventListener("change", (event) => updateSettings({ soundEnabled: event.target.checked }));
+  $("#sound-volume").addEventListener("input", (event) => { $("#sound-volume-output").textContent = `${event.target.value}%`; });
+  $("#sound-volume").addEventListener("change", (event) => updateSettings({ soundVolume: Number(event.target.value) / 100 }));
+  $("#test-sound-button").addEventListener("click", () => alertManager.testSound());
+  $("#enable-notification-button").addEventListener("click", () => alertManager.requestNotificationPermission());
+  $("#test-notification-button").addEventListener("click", () => alertManager.testNotification());
+  $("#schedule-notification").addEventListener("change", (event) => updateSettings({ scheduleNotification: event.target.value }));
+  $("#wake-lock-enabled").addEventListener("change", (event) => updateSettings({ wakeLockEnabled: event.target.checked }));
+  for (const eventName of ["pageshow", "focus"]) window.addEventListener(eventName, () => {
+    void syncTimer();
+    void pollScheduleNotifications();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      void syncTimer();
+      void pollScheduleNotifications();
+    }
+  });
 }
 
 async function initialize() {
   pwaManager.subscribe(renderPwaState);
+  alertManager.subscribe(renderAlertState);
+  wakeLockManager.subscribe(renderWakeLockState);
   bindEvents();
   try {
     await initializeDatabase();
+    const savedSettings = await getMetaValue(SETTINGS_META_KEY);
+    state.settings = normalizeSettings(savedSettings);
+    if (!savedSettings) await saveMetaValue(SETTINGS_META_KEY, state.settings);
+    renderSettingsControls();
+    await alertManager.start();
     state.timer = await getCurrentTimer();
     if (state.timer) {
       state.timer = reduceTimer(state.timer, { type: "sync" }, Date.now());
       await saveCurrentTimer(state.timer);
     }
     pwaManager.notifyTimerStateChanged();
+    wakeLockManager.start();
     await loadSchedule(state.selectedDate);
     loading.hidden = true;
     app.hidden = false;
     await showView(state.timer ? "timer" : "schedule");
+    state.scheduleNotificationCheckAt = Date.now();
     void pwaManager.start();
   } catch (error) {
     console.error(error);
@@ -813,4 +952,5 @@ async function initialize() {
 }
 
 window.setInterval(() => syncTimer({ persist: true }), 1000);
+window.setInterval(() => pollScheduleNotifications(), 30_000);
 initialize();

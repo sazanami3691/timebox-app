@@ -102,6 +102,22 @@ export async function getCurrentTimer() {
   return result ?? null;
 }
 
+export async function getMetaValue(key) {
+  const db = await openDatabase();
+  const tx = db.transaction(STORES.meta, "readonly");
+  const done = transactionDone(tx);
+  const result = await requestResult(tx.objectStore(STORES.meta).get(key));
+  await done;
+  return result?.value ?? null;
+}
+
+export async function saveMetaValue(key, value) {
+  const db = await openDatabase();
+  const tx = db.transaction(STORES.meta, "readwrite");
+  tx.objectStore(STORES.meta).put({ key, value, updatedAt: Date.now() });
+  await transactionDone(tx);
+}
+
 export async function savePlan(plan) {
   const db = await openDatabase();
   const tx = db.transaction(STORES.plans, "readwrite");
