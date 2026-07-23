@@ -226,4 +226,4 @@ npm test
 
 第2段階C3でも`DB_VERSION 1`、`SCHEMA_VERSION 1`、`BACKUP_VERSION 1`を維持しています。新しいObject Storeや必須フィールドはなく、C1バックアップおよびC2検索・履歴編集と互換です。
 
-詳細仕様は[`TIMEBOX_SPEC.md`](./TIMEBOX_SPEC.md)、UI基準は[`UI_STYLE_GUIDE.md`](./UI_STYLE_GUIDE.md)、開発ルールは[`AGENTS.md`](./AGENTS.md)を参照してください。
+詳細仕様は[`TIMEBOX_SPEC.md`](./TIMEBOX_SPEC.md)、UI基準は[`UI_STYLE_GUIDE.md`](./UI_STYLE_GUIDE.md)、開発ルールは[`AGENTS.md`](./AGENTS.md)、開発者向けのファイル構成・依存関係は[`PROJECT_MASTER_INDEX.md`](./PROJECT_MASTER_INDEX.md)を参照してください。
