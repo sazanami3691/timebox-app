@@ -1,1 +1,1 @@
-globalThis.TIMEBOX_APP_VERSION = "1.4.0";
+globalThis.TIMEBOX_APP_VERSION = "1.5.0";

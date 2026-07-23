@@ -7,6 +7,10 @@ import {
   planAfterHistoryDeletion,
   syncPlanFromHistory
 } from "./history-edit.js";
+import {
+  buildDurationOrderChanges,
+  planReorderRevision
+} from "./reorder.js";
 
 const DB_NAME = "timebox-app";
 const DB_VERSION = 1;
@@ -176,6 +180,80 @@ export async function savePlan(plan) {
   const tx = db.transaction(STORES.plans, "readwrite");
   tx.objectStore(STORES.plans).put(plan);
   await transactionDone(tx);
+}
+
+export async function saveDurationPlanOrder({
+  date,
+  orderedPlanIds,
+  expectedPlanRevisions,
+  now = Date.now()
+}) {
+  if (typeof date !== "string" || !date) throw new Error("並べ替え対象の日付が不正です。");
+  if (!Array.isArray(orderedPlanIds) || !orderedPlanIds.length) throw new Error("並べ替え対象がありません。");
+  if (new Set(orderedPlanIds).size !== orderedPlanIds.length) throw new Error("並べ替え順に重複IDがあります。");
+  if (!expectedPlanRevisions || typeof expectedPlanRevisions !== "object") throw new Error("予定の競合確認情報がありません。");
+  if (!Number.isSafeInteger(now) || now < 0) throw new Error("更新日時が不正です。");
+
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORES.plans, STORES.timer], "readwrite");
+    const planStore = tx.objectStore(STORES.plans);
+    const requests = {
+      plans: planStore.index("date").getAll(date),
+      timer: tx.objectStore(STORES.timer).get("active")
+    };
+    const values = {};
+    let remaining = 2;
+    let controlledError = null;
+    let result = null;
+
+    const finishReads = () => {
+      if (--remaining > 0 || controlledError) return;
+      try {
+        if (values.timer) throw new Error("タイマー動作中は予定を並べ替えできません。先に完了またはスキップしてください。");
+        const candidates = values.plans
+          .filter((plan) => plan.status === "pending" && plan.scheduleType === "duration")
+          .sort((left, right) => left.order - right.order || left.createdAt - right.createdAt || left.id.localeCompare(right.id));
+        const currentIds = candidates.map((plan) => plan.id);
+        if (currentIds.length !== orderedPlanIds.length
+          || currentIds.some((id) => !orderedPlanIds.includes(id))) {
+          throw new Error("予定の集合が別の操作で変わりました。画面を更新してやり直してください。");
+        }
+        for (const plan of candidates) {
+          if (plan.date !== date || plan.status !== "pending" || plan.scheduleType !== "duration") {
+            throw new Error("並べ替え対象の状態が変わりました。画面を更新してください。");
+          }
+          if (expectedPlanRevisions[plan.id] !== planReorderRevision(plan)) {
+            throw new Error(`「${plan.title}」が別の操作で変更されました。画面を更新してやり直してください。`);
+          }
+        }
+        const changes = buildDurationOrderChanges(candidates, orderedPlanIds, now);
+        for (const plan of changes.changedPlans) planStore.put(plan);
+        result = {
+          orderedPlans: changes.orderedPlans,
+          changedCount: changes.changedPlans.length
+        };
+      } catch (error) {
+        controlledError = error;
+        tx.abort();
+      }
+    };
+
+    for (const [key, request] of Object.entries(requests)) {
+      request.addEventListener("success", () => {
+        values[key] = request.result;
+        finishReads();
+      }, { once: true });
+      request.addEventListener("error", () => {
+        controlledError = request.error ?? new Error("並べ替え対象を読み込めませんでした。");
+      }, { once: true });
+    }
+    tx.addEventListener("complete", () => resolve(result), { once: true });
+    tx.addEventListener("abort", () => reject(controlledError ?? tx.error ?? new Error("並べ替え保存を中止しました。")), { once: true });
+    tx.addEventListener("error", () => {
+      if (!controlledError) controlledError = tx.error ?? new Error("並べ替えを保存できませんでした。");
+    }, { once: true });
+  });
 }
 
 export async function deletePlan(id) {

@@ -19,6 +19,7 @@ import {
   validatePlan
 } from "./core.js";
 import {
+  BACKUP_VERSION,
   createBackupDocument,
   createBackupFilename,
   readBackupFile,
@@ -43,6 +44,7 @@ import {
   putPlansAtomically,
   replaceAllFromBackup,
   saveCurrentTimer,
+  saveDurationPlanOrder,
   saveMetaValue,
   savePlan,
   savePlanAndTimer,
@@ -60,6 +62,9 @@ import {
   normalizeSettings
 } from "./settings.js";
 import { createWakeLockManager } from "./wake-lock.js";
+import { canReorderPlan, planReorderRevision } from "./reorder.js";
+import { createReorderController } from "./reorder-controller.js";
+import { createSettingsNavigation } from "./settings-nav.js";
 
 const $ = (selector) => document.querySelector(selector);
 const today = () => localDateString(new Date());
@@ -86,10 +91,13 @@ const state = {
   editingHistory: null,
   pendingHistoryEdit: null,
   deletingHistory: null,
-  historyMutationBusy: false
+  historyMutationBusy: false,
+  reorderBusy: false
 };
 
 let searchController;
+let reorderController;
+let settingsNavigation;
 
 const pwaManager = createPwaManager({ getTimerStatus: () => state.timer?.status ?? "idle" });
 const alertManager = createAlertManager({
@@ -241,7 +249,7 @@ function updateHeader() {
     screenLabel.textContent = "全期間検索";
     headerDate.textContent = "予定・履歴";
   } else if (state.view === "settings") {
-    screenLabel.textContent = "設定・アプリ情報";
+    screenLabel.textContent = "設定";
     headerDate.textContent = `バージョン ${globalThis.TIMEBOX_APP_VERSION ?? "不明"}`;
   } else {
     screenLabel.textContent = state.selectedDate === today() ? "今日の予定" : "日付別予定";
@@ -506,6 +514,7 @@ async function showView(view) {
   historyView.hidden = view !== "history";
   searchView.hidden = view !== "search";
   settingsView.hidden = view !== "settings";
+  if (view === "settings") settingsNavigation?.reset();
   if (view === "schedule") await loadSchedule(state.selectedDate);
   if (view === "history") await loadHistory(state.historyDate);
   if (view === "search") searchController?.focus();
@@ -522,6 +531,27 @@ function buildPlanCard(plan, finished = false) {
   const active = state.timer?.planId === plan.id;
   const card = createElement("article", `plan-card${active ? " is-active" : ""}${finished ? ` ${plan.status}` : ""}`);
   card.dataset.planId = plan.id;
+  const reorderCandidate = !finished
+    && plan.status === "pending"
+    && plan.scheduleType === "duration"
+    && plan.date >= today();
+  if (reorderCandidate) {
+    const enabled = canReorderPlan(plan, {
+      selectedDate: state.selectedDate,
+      todayDate: today(),
+      timerStatus: state.timer?.status ?? "idle"
+    }) && !state.reorderBusy;
+    const handle = createElement("button", "reorder-handle", "≡");
+    handle.type = "button";
+    handle.disabled = !enabled;
+    handle.setAttribute("aria-label", `「${plan.title}」を長押しして並べ替え`);
+    handle.setAttribute("aria-describedby", "reorder-status");
+    handle.title = enabled
+      ? "約400ミリ秒長押しして上下へ移動します"
+      : "タイマー動作中は並べ替えできません";
+    card.classList.add("has-reorder-handle");
+    card.append(handle);
+  }
   const top = createElement("div", "card-top");
   const title = createElement("div", "card-title");
   title.append(createElement("strong", "", plan.title));
@@ -576,6 +606,7 @@ function fillList(container, plans, emptyMessage, finished = false) {
 }
 
 function renderSchedule() {
+  reorderController?.cancel();
   const past = state.selectedDate < today();
   $("#selected-date").value = state.selectedDate;
   $("#schedule-title").textContent = state.selectedDate === today() ? "今日のタイムボックス" : formatDateLabel(state.selectedDate);
@@ -591,7 +622,45 @@ function renderSchedule() {
   fillList($("#finished-plan-list"), finished, "完了・スキップ済みの予定はありません。", true);
   $("#finished-count").textContent = String(finished.length);
   $("#schedule-summary").textContent = `未完了 ${pending.length}件 / 完了・スキップ ${finished.length}件`;
+  $("#reorder-status").textContent = past
+    ? "過去日の予定は並べ替えできません。"
+    : state.timer && ACTIVE_TIMER_STATES.has(state.timer.status)
+      ? "タイマー動作中は並べ替えできません。先に完了またはスキップしてください。"
+      : durations.length < 2
+        ? "並べ替えには時間指定の未完了予定が2件以上必要です。"
+        : "≡ハンドルを約400ミリ秒長押しし、上下へ移動して離すと保存します。";
   updateHeader();
+}
+
+async function saveReorderedDurationPlans(orderedPlanIds) {
+  if (state.reorderBusy) return;
+  const candidates = state.plans
+    .filter((plan) => plan.status === "pending" && plan.scheduleType === "duration")
+    .sort((left, right) => left.order - right.order || left.createdAt - right.createdAt || left.id.localeCompare(right.id));
+  state.reorderBusy = true;
+  try {
+    await saveDurationPlanOrder({
+      date: state.selectedDate,
+      orderedPlanIds,
+      expectedPlanRevisions: Object.fromEntries(candidates.map((plan) => [plan.id, planReorderRevision(plan)])),
+      now: Date.now()
+    });
+    state.reorderBusy = false;
+    await loadSchedule(state.selectedDate);
+    if (searchController?.hasResults()) await searchController.refresh();
+    showToast("予定の並び順を保存しました。");
+  } finally {
+    state.reorderBusy = false;
+  }
+}
+
+async function handleReorderFailure(error) {
+  try {
+    await loadSchedule(state.selectedDate);
+  } catch (reloadError) {
+    console.error("Reorder resync failed", reloadError);
+  }
+  showError(error, "並べ替えを保存できませんでした。表示を保存済み順へ戻しました。");
 }
 
 function renderTimer() {
@@ -1240,10 +1309,16 @@ function bindEvents() {
   $("#menu-backdrop").addEventListener("click", closeMenu);
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    if ($("#side-menu").classList.contains("open")) closeMenu();
+    if ($("#side-menu").classList.contains("open")) {
+      closeMenu();
+      return;
+    }
     const openDialogs = [...document.querySelectorAll("dialog[open]")];
     const topDialog = openDialogs.at(-1);
-    if (!topDialog) return;
+    if (!topDialog) {
+      if (state.view === "settings" && settingsNavigation?.handleEscape()) event.preventDefault();
+      return;
+    }
     if (state.historyMutationBusy && [historyEditConfirmDialog, historyDeleteDialog].includes(topDialog)) return;
     event.preventDefault();
     if (topDialog === confirmDialog) $("#confirm-cancel-button").click();
@@ -1358,6 +1433,12 @@ async function initialize() {
     onOpenHistory: openHistorySearchResult,
     onError: showError
   });
+  settingsNavigation = createSettingsNavigation({ root: settingsView });
+  reorderController = createReorderController({
+    list: $("#duration-plan-list"),
+    onDrop: saveReorderedDurationPlans,
+    onError: (error) => { void handleReorderFailure(error); }
+  });
   bindEvents();
   try {
     await initializeDatabase();
@@ -1365,6 +1446,10 @@ async function initialize() {
     state.settings = normalizeSettings(savedSettings);
     if (!savedSettings) await saveMetaValue(SETTINGS_META_KEY, state.settings);
     renderSettingsControls();
+    $("#database-name").textContent = databaseInfo.name;
+    $("#database-version").textContent = String(databaseInfo.version);
+    $("#schema-version").textContent = String(databaseInfo.schemaVersion);
+    $("#backup-version").textContent = String(BACKUP_VERSION);
     await alertManager.start();
     state.timer = await getCurrentTimer();
     if (state.timer) {

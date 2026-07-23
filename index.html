@@ -95,6 +95,7 @@
           </div>
         </div>
         <div id="duration-plan-list" class="card-list"></div>
+        <p id="reorder-status" class="muted reorder-status">ハンドルを長押しすると、時間指定の未完了予定を並べ替えられます。</p>
       </section>
 
       <details id="finished-section" class="panel finished-panel">
@@ -176,132 +177,58 @@
       </section>
     </section>
 
-    <section id="settings-view" class="view" aria-labelledby="settings-title" hidden>
-      <div class="view-heading">
-        <div>
-          <p class="eyebrow">第2段階A・B・C1・C2</p>
-          <h1 id="settings-title">設定・アプリ情報</h1>
+    <section id="settings-view" class="view settings-view" aria-labelledby="settings-title" hidden>
+      <section class="settings-top" data-settings-top>
+        <div class="view-heading">
+          <div>
+            <p class="eyebrow">第2段階A・B・C1・C2・C3</p>
+            <h1 id="settings-title" tabindex="-1">設定</h1>
+          </div>
         </div>
-      </div>
+        <p class="settings-intro">設定する項目を選んでください。詳細は1カテゴリずつ表示します。</p>
+        <div class="settings-list" aria-label="設定カテゴリ">
+          <button type="button" class="settings-row" data-settings-target="update"><span><strong>アプリ更新</strong><small>オフライン準備、最新版の確認</small></span><span class="settings-chevron" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-row" data-settings-target="alerts"><span><strong>通知と終了音</strong><small>終了音、通知権限、テスト</small></span><span class="settings-chevron" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-row" data-settings-target="schedule-notifications"><span><strong>予定通知</strong><small>時刻指定予定の通知タイミング</small></span><span class="settings-chevron" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-row" data-settings-target="wake-lock"><span><strong>画面点灯維持</strong><small>タイマー中のWake Lock</small></span><span class="settings-chevron" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-row" data-settings-target="backup"><span><strong>バックアップと復元</strong><small>JSON書き出し、全置換復元</small></span><span class="settings-chevron" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-row" data-settings-target="storage-info"><span><strong>データ保存とアプリ情報</strong><small>保存先、バージョン、データ保持</small></span><span class="settings-chevron" aria-hidden="true">›</span></button>
+        </div>
+      </section>
 
-      <div class="settings-grid">
-        <section class="panel" aria-labelledby="app-status-title">
-          <h2 id="app-status-title">アプリ状態</h2>
-          <dl class="status-list">
-            <div><dt>アプリバージョン</dt><dd id="app-version">確認中</dd></div>
-            <div><dt>接続表示</dt><dd id="settings-network-status">確認中</dd></div>
-            <div><dt>Service Worker</dt><dd id="service-worker-status">確認中</dd></div>
-            <div><dt>オフライン準備</dt><dd id="offline-ready-status">確認中</dd></div>
-          </dl>
-          <p id="network-status-note" class="muted">オンライン表示は実際の通信成功を保証するものではありません。</p>
-        </section>
+      <section class="settings-detail" data-settings-page="update" aria-labelledby="settings-update-title" hidden>
+        <header class="settings-detail-header"><button type="button" class="settings-back" data-settings-back>‹ 設定</button><p class="eyebrow">アプリ状態</p><h1 id="settings-update-title" tabindex="-1">アプリ更新</h1></header>
+        <section class="panel" aria-labelledby="app-status-title"><h2 id="app-status-title">接続とオフライン準備</h2><dl class="status-list"><div><dt>接続表示</dt><dd id="settings-network-status">確認中</dd></div><div><dt>Service Worker</dt><dd id="service-worker-status">確認中</dd></div><div><dt>オフライン準備</dt><dd id="offline-ready-status">確認中</dd></div></dl><p id="network-status-note" class="muted">オンライン表示は実際の通信成功を保証するものではありません。</p></section>
+        <section class="panel" aria-labelledby="update-settings-title"><h2 id="update-settings-title">新しいバージョン</h2><p id="update-status-message" class="status-message" role="status">更新機能を準備しています。</p><div class="settings-actions"><button id="check-update-button" type="button">更新を確認</button><button id="apply-update-button" class="primary" type="button" hidden>更新する</button></div><p class="muted">新しい版は自動適用しません。実行中・一時停止中・終了待ちのタイマーがある場合は保留し、更新後もIndexedDBデータを維持します。</p></section>
+      </section>
 
-        <section class="panel" aria-labelledby="update-settings-title">
-          <h2 id="update-settings-title">アプリ更新</h2>
-          <p id="update-status-message" class="status-message" role="status">更新機能を準備しています。</p>
-          <div class="settings-actions">
-            <button id="check-update-button" type="button">更新を確認</button>
-            <button id="apply-update-button" class="primary" type="button" hidden>更新する</button>
-          </div>
-          <p class="muted">新しい版は自動適用しません。実行中・一時停止中・終了待ちのタイマーがある場合、更新はタイマー終了後まで保留します。</p>
-        </section>
+      <section class="settings-detail" data-settings-page="alerts" aria-labelledby="settings-alerts-title" hidden>
+        <header class="settings-detail-header"><button type="button" class="settings-back" data-settings-back>‹ 設定</button><p class="eyebrow">音と権限</p><h1 id="settings-alerts-title" tabindex="-1">通知と終了音</h1></header>
+        <section class="panel" aria-labelledby="sound-settings-title"><h2 id="sound-settings-title">タイマー終了音</h2><label class="setting-toggle" for="sound-enabled"><input id="sound-enabled" type="checkbox"><span>終了音を3回再生する</span></label><div class="field"><label for="sound-volume">音量 <output id="sound-volume-output" for="sound-volume">25%</output></label><input id="sound-volume" type="range" min="0" max="100" step="1" value="25"></div><button id="test-sound-button" type="button">音をテスト</button><p id="sound-status-message" class="status-message" role="status">音声機能を確認しています。</p><p class="muted">最初にテストボタンを押すと音声を利用できる状態になります。端末の消音設定や音量にも影響されます。</p></section>
+        <section class="panel" aria-labelledby="notification-settings-title"><h2 id="notification-settings-title">タイマー終了通知</h2><dl class="status-list"><div><dt>通知機能</dt><dd id="notification-support-status">確認中</dd></div><div><dt>通知権限</dt><dd id="notification-permission-status">確認中</dd></div></dl><div class="settings-actions"><button id="enable-notification-button" type="button">通知を有効にする</button><button id="test-notification-button" type="button">通知をテスト</button></div><p id="notification-status-message" class="status-message" role="status">通知機能を確認しています。</p><p class="notice compact">iPadのホーム画面版Webアプリを主な確認対象とします。通常タブやOS状態により利用可否が異なり、アプリを完全に閉じている間の通知は保証されません。</p></section>
+      </section>
 
-        <section class="panel" aria-labelledby="sound-settings-title">
-          <h2 id="sound-settings-title">タイマー終了音</h2>
-          <label class="setting-toggle" for="sound-enabled">
-            <input id="sound-enabled" type="checkbox">
-            <span>終了音を3回再生する</span>
-          </label>
-          <div class="field">
-            <label for="sound-volume">音量 <output id="sound-volume-output" for="sound-volume">25%</output></label>
-            <input id="sound-volume" type="range" min="0" max="100" step="1" value="25">
-          </div>
-          <button id="test-sound-button" type="button">音をテスト</button>
-          <p id="sound-status-message" class="status-message" role="status">音声機能を確認しています。</p>
-          <p class="muted">最初に「音をテスト」を押すと、ブラウザが音声を利用できる状態になります。端末の消音設定や音量にも影響されます。</p>
-        </section>
+      <section class="settings-detail" data-settings-page="schedule-notifications" aria-labelledby="settings-schedule-title" hidden>
+        <header class="settings-detail-header"><button type="button" class="settings-back" data-settings-back>‹ 設定</button><p class="eyebrow">時刻指定予定</p><h1 id="settings-schedule-title" tabindex="-1">予定通知</h1></header>
+        <section class="panel"><div class="field"><label for="schedule-notification">通知タイミング</label><select id="schedule-notification"><option value="none">通知なし</option><option value="start">開始時刻のみ</option><option value="5">5分前＋開始時刻</option><option value="10">10分前＋開始時刻</option><option value="15">15分前＋開始時刻</option></select></div><p class="muted">時刻指定型の未開始予定だけが対象です。通知時刻になってもタイマーは自動開始しません。</p><p class="notice compact">アプリが動作可能な間に通知します。アプリを完全に閉じている間の通知は保証されません。</p></section>
+      </section>
 
-        <section class="panel" aria-labelledby="notification-settings-title">
-          <h2 id="notification-settings-title">通知と予定時刻通知</h2>
-          <dl class="status-list">
-            <div><dt>通知機能</dt><dd id="notification-support-status">確認中</dd></div>
-            <div><dt>通知権限</dt><dd id="notification-permission-status">確認中</dd></div>
-          </dl>
-          <div class="settings-actions">
-            <button id="enable-notification-button" type="button">通知を有効にする</button>
-            <button id="test-notification-button" type="button">通知をテスト</button>
-          </div>
-          <div class="field">
-            <label for="schedule-notification">時刻指定予定の通知タイミング</label>
-            <select id="schedule-notification">
-              <option value="none">通知なし</option>
-              <option value="start">開始時刻のみ</option>
-              <option value="5">5分前＋開始時刻</option>
-              <option value="10">10分前＋開始時刻</option>
-              <option value="15">15分前＋開始時刻</option>
-            </select>
-          </div>
-          <p id="notification-status-message" class="status-message" role="status">通知機能を確認しています。</p>
-          <p class="notice compact">iPadではホーム画面版Webアプリを主な確認対象とします。Safari通常タブ、Chrome通常タブ、Chromeから追加したホーム画面版では利用可否が異なる場合があります。アプリを完全に閉じている間の通知は保証されません。</p>
-        </section>
+      <section class="settings-detail" data-settings-page="wake-lock" aria-labelledby="settings-wake-title" hidden>
+        <header class="settings-detail-header"><button type="button" class="settings-back" data-settings-back>‹ 設定</button><p class="eyebrow">Screen Wake Lock</p><h1 id="settings-wake-title" tabindex="-1">画面点灯維持</h1></header>
+        <section class="panel" aria-labelledby="wake-lock-settings-title"><h2 id="wake-lock-settings-title">タイマー中の画面</h2><label class="setting-toggle" for="wake-lock-enabled"><input id="wake-lock-enabled" type="checkbox"><span>タイマー中は画面を点灯したままにする</span></label><dl class="status-list"><div><dt>対応状況</dt><dd id="wake-lock-support-status">確認中</dd></div><div><dt>現在状態</dt><dd id="wake-lock-active-status">確認中</dd></div></dl><p id="wake-lock-status-message" class="status-message" role="status">画面点灯維持機能を確認しています。</p><p class="muted">running中だけ取得し、一時停止・終了待ち・非表示時は解除します。OSや省電力設定で解除される場合がありますが、タイマーは終了予定時刻との差から復帰します。</p></section>
+      </section>
 
-        <section class="panel" aria-labelledby="wake-lock-settings-title">
-          <h2 id="wake-lock-settings-title">画面点灯維持</h2>
-          <label class="setting-toggle" for="wake-lock-enabled">
-            <input id="wake-lock-enabled" type="checkbox">
-            <span>タイマー中は画面を点灯したままにする</span>
-          </label>
-          <dl class="status-list">
-            <div><dt>対応状況</dt><dd id="wake-lock-support-status">確認中</dd></div>
-            <div><dt>現在状態</dt><dd id="wake-lock-active-status">確認中</dd></div>
-          </dl>
-          <p id="wake-lock-status-message" class="status-message" role="status">画面点灯維持機能を確認しています。</p>
-          <p class="muted">running中だけ取得し、一時停止・終了待ち・完了・スキップでは解除します。取得できなくても、タイマーは終了予定時刻との差から復帰します。</p>
-        </section>
+      <section class="settings-detail" data-settings-page="backup" aria-labelledby="settings-backup-title" hidden>
+        <header class="settings-detail-header"><button type="button" class="settings-back" data-settings-back>‹ 設定</button><p class="eyebrow">端末内データ</p><h1 id="settings-backup-title" tabindex="-1">バックアップと復元</h1></header>
+        <section class="panel backup-panel" aria-labelledby="backup-settings-title"><h2 id="backup-settings-title">JSONバックアップ</h2><p>全期間の予定・確定済み履歴・現在のアプリ設定をJSONファイルへ保存できます。定期的に書き出してください。</p><div class="backup-scope-grid"><div><h3>バックアップ対象</h3><p class="muted">予定、履歴、終了音・音量・予定通知タイミング・画面点灯維持の設定</p></div><div><h3>対象外</h3><p class="muted">実行中タイマー、通知権限、通知済み台帳、Service Worker・キャッシュ</p></div></div><p id="backup-timer-warning" class="notice compact" hidden>実行中タイマーの状態はバックアップに含まれません。書き出しはできますが、復元はタイマー完了またはスキップ後に行ってください。</p><div class="settings-actions"><button id="export-backup-button" class="primary" type="button">バックアップを書き出す</button></div><div class="field backup-file-field"><label for="backup-file-input">復元するJSONファイル</label><input id="backup-file-input" type="file" accept=".json,application/json" aria-describedby="backup-file-name backup-status-message"><p id="backup-file-name" class="file-name">ファイルは選択されていません。</p></div><p class="notice compact">復元は現在の予定・履歴・設定をすべて置き換えます。先に現在データを書き出すことを推奨します。ファイル選択だけでは置換しません。</p><p id="backup-status-message" class="status-message" role="status">バックアップ操作を待っています。</p></section>
+      </section>
 
-        <section class="panel" aria-labelledby="install-guide-title">
-          <h2 id="install-guide-title">iPadのホーム画面版Webアプリ</h2>
-          <ol class="instruction-list">
-            <li>iPadのSafariまたはChromeで共有ボタン／メニューを開きます。</li>
-            <li>利用できる場合は「ホーム画面に追加」を選びます。</li>
-            <li>追加後、ホーム画面のTimeboxアイコンから起動します。</li>
-          </ol>
-          <p class="notice compact">Chromeから追加したホーム画面版も正式な対象です。初回はオンラインで一度すべて読み込み、オフライン準備完了後に利用してください。</p>
-        </section>
-
-        <section class="panel" aria-labelledby="data-info-title">
-          <h2 id="data-info-title">保存データについて</h2>
-          <p>予定・履歴・現在のタイマーは、この端末・ブラウザ内のIndexedDBに保存されます。アプリ更新では削除しません。</p>
-          <p class="notice compact">ChromeやSafariなど、利用中ブラウザのサイトデータを削除すると保存内容が消える可能性があります。</p>
-          <p class="muted">全期間検索と確認付きの履歴編集・削除を利用できます。長押しドラッグ並べ替えは今後追加予定です。</p>
-        </section>
-
-        <section class="panel backup-panel" aria-labelledby="backup-settings-title">
-          <h2 id="backup-settings-title">バックアップと復元</h2>
-          <p>全期間の予定・確定済み履歴・現在のアプリ設定をJSONファイルへ保存できます。サイトデータ削除などに備え、定期的に書き出してください。</p>
-          <div class="backup-scope-grid">
-            <div>
-              <h3>バックアップ対象</h3>
-              <p class="muted">予定、履歴、終了音・音量・予定通知タイミング・画面点灯維持の設定</p>
-            </div>
-            <div>
-              <h3>対象外</h3>
-              <p class="muted">実行中タイマー、通知権限、通知済み台帳、Service Worker・キャッシュ</p>
-            </div>
-          </div>
-          <p id="backup-timer-warning" class="notice compact" hidden>実行中タイマーの状態はバックアップに含まれません。書き出しはできますが、復元はタイマー完了またはスキップ後に行ってください。</p>
-          <div class="settings-actions">
-            <button id="export-backup-button" class="primary" type="button">バックアップを書き出す</button>
-          </div>
-          <div class="field backup-file-field">
-            <label for="backup-file-input">復元するJSONファイル</label>
-            <input id="backup-file-input" type="file" accept=".json,application/json" aria-describedby="backup-file-name backup-status-message">
-            <p id="backup-file-name" class="file-name">ファイルは選択されていません。</p>
-          </div>
-          <p class="notice compact">復元は現在の予定・履歴・設定をすべて置き換えます。先に現在データを書き出すことを推奨します。ファイル選択だけでは置換しません。</p>
-          <p id="backup-status-message" class="status-message" role="status">バックアップ操作を待っています。</p>
-        </section>
-      </div>
+      <section class="settings-detail" data-settings-page="storage-info" aria-labelledby="settings-storage-title" hidden>
+        <header class="settings-detail-header"><button type="button" class="settings-back" data-settings-back>‹ 設定</button><p class="eyebrow">保存と技術情報</p><h1 id="settings-storage-title" tabindex="-1">データ保存とアプリ情報</h1></header>
+        <section class="panel" aria-labelledby="data-info-title"><h2 id="data-info-title">保存データについて</h2><p>予定・履歴・現在のタイマーは、この端末・ブラウザ内のIndexedDBに保存されます。同じURLでもChromeとSafariなど別ブラウザ間では共有されません。</p><p class="notice compact">サイトデータを削除すると保存内容が消える可能性があります。定期的なJSONバックアップを推奨します。</p><p class="muted">サーバー、ログイン、クラウド同期は使用していません。</p></section>
+        <section class="panel" aria-labelledby="app-info-title"><h2 id="app-info-title">アプリ情報</h2><dl class="status-list"><div><dt>アプリ名</dt><dd>Timebox</dd></div><div><dt>アプリバージョン</dt><dd id="app-version">確認中</dd></div><div><dt>IndexedDB名</dt><dd id="database-name">timebox-app</dd></div><div><dt>DB_VERSION</dt><dd id="database-version">1</dd></div><div><dt>SCHEMA_VERSION</dt><dd id="schema-version">1</dd></div><div><dt>バックアップ形式</dt><dd id="backup-version">1</dd></div></dl><p class="muted technical-info">公開URL: https:&#47;&#47;sazanami3691.github.io&#47;timebox-app&#47;</p></section>
+        <section class="panel" aria-labelledby="install-guide-title"><h2 id="install-guide-title">iPadのホーム画面版Webアプリ</h2><ol class="instruction-list"><li>iPadのSafariまたはChromeで共有ボタン／メニューを開きます。</li><li>利用できる場合は「ホーム画面に追加」を選びます。</li><li>ホーム画面のTimeboxアイコンから起動します。</li></ol><p class="notice compact">Chromeから追加したホーム画面版も正式な対象です。初回はオンラインで読み込み、オフライン準備完了後に利用してください。</p></section>
+      </section>
     </section>
   </main>
 
